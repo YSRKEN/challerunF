@@ -679,23 +679,26 @@ int main(int argc, char* argv[]) {
 	try {
 		// コマンドライン引数から、ソフトウェアの動作設定を読み取る
 		Setting setting(argc, argv);
-		cout << setting << endl;
+		//cout << setting << endl;
 		// 問題ファイルを読み取る
 		Problem problem(setting.file_name(), setting.start_position(), setting.goal_position());
-		cout << problem << endl;
+		//cout << problem << endl;
 		//
 		Solver solver;
 		if (setting.solver_flg()) {
 			// 解を探索する
-			StopWatch sw;
-			sw.Start();
-			const auto result = solver.solve(problem, setting.split_count());
-			sw.Stop();
+			for (size_t i = 0; i < 20; ++i) {
+				StopWatch sw;
+				sw.Start();
+				const auto result = solver.solve(problem, setting.split_count());
+				sw.Stop();
+				cout << sw.ElapsedMilliseconds() << endl;
+			}
 			// 結果を表示する
-			cout << "【結果】" << endl;
-			cout << "最高得点：" << result.get_score() << endl;
-			cout << "最高経路：" << result << endl;
-			cout << "計算時間：" << sw.ElapsedMilliseconds() << "[ms]" << endl;
+			//cout << "【結果】" << endl;
+			//cout << "最高得点：" << result.get_score() << endl;
+			//cout << "最高経路：" << result << endl;
+			//cout << "計算時間：" << sw.ElapsedMilliseconds() << "[ms]" << endl;
 			return 0;
 		}
 		else {
