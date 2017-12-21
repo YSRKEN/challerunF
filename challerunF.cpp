@@ -335,6 +335,16 @@ public:
 		}
 		return side_flg;
 	}
+	// ある地点の周りにある、まだ通れる辺の数の初期値を返す
+	// (ただしゴール地点だけ+1しておく)
+	vector<char> get_available_side_count() const {
+		vector<char> available_side_count(width_ * height_, 0);
+		for (size_t i = 0; i < field_.size(); ++i) {
+			available_side_count[i] = field_[i].size();
+		}
+		available_side_count[goal_] += 1;
+		return available_side_count;
+	}
 	// 角にゴールがあるか？
 	bool corner_goal_flg() const noexcept {
 		return (goal_ == 0 || goal_ == width_ - 1 || goal_ == width_ * (height_ - 1) || goal_ == width_ * height_ - 1);
@@ -588,6 +598,7 @@ class Solver {
 	Problem problem_;
 	Result result_, best_result_;
 	vector<char> side_flg_;
+	vector<char> available_side_count_;
 
 	// 普通の深さ優先探索を行う
 	Result dfs(const Problem &problem, const bool corner_goal_flg) {
@@ -597,6 +608,9 @@ class Solver {
 		best_result_.set_score(-9999);
 		// ある辺を踏破したか？
 		side_flg_ = problem.get_side_flg();
+		// ある地点の周りにある、まだ通れる辺の数
+		// (ただしゴール地点だけ+1しておく)
+		available_side_count_ = problem.get_available_side_count();
 		// 探索開始
 		if (corner_goal_flg) {
 			dfs_cg();
@@ -619,8 +633,12 @@ class Solver {
 		for (const auto &dir : problem_.get_dir_list(result_.now_point())) {
 			if (!side_flg_[dir.side_index])
 				continue;
+			if (available_side_count_[dir.next_position] <= 1)
+				continue;
 			// 進める
 			const int old_score = result_.get_score();
+			--available_side_count_[result_.now_point()];
+			--available_side_count_[dir.next_position];
 			result_.move_side(dir.next_position);
 			result_.set_score(problem_.get_operation(dir.side_index).calc(result_.get_score()));
 			side_flg_[dir.side_index] = 0;
@@ -629,6 +647,8 @@ class Solver {
 			// 戻す
 			side_flg_[dir.side_index] = 1;
 			result_.back_side();
+			++available_side_count_[dir.next_position];
+			++available_side_count_[result_.now_point()];
 			result_.set_score(old_score);
 		}
 	}
@@ -687,13 +707,15 @@ int main(int argc, char* argv[]) {
 		Solver solver;
 		if (setting.solver_flg()) {
 			// 解を探索する
+			Result result;
 			for (size_t i = 0; i < 20; ++i) {
 				StopWatch sw;
 				sw.Start();
-				const auto result = solver.solve(problem, setting.split_count());
+				result = solver.solve(problem, setting.split_count());
 				sw.Stop();
 				cout << sw.ElapsedMilliseconds() << endl;
 			}
+			cout << result.get_score() << "," << result << endl;
 			// 結果を表示する
 			//cout << "【結果】" << endl;
 			//cout << "最高得点：" << result.get_score() << endl;
@@ -714,25 +736,25 @@ int main(int argc, char* argv[]) {
 	}
 }
 
-/* このコミットの記録(2484.1±平均誤差2.85703)
-2492
-2509
-2484
-2490
-2490
-2489
-2467
-2468
-2472
-2488
-2472
-2471
-2470
-2505
-2473
-2482
-2476
-2496
-2486
-2502
+/* このコミットの記録(2368.1±平均誤差5.93823)
+2356
+2357
+2389
+2351
+2402
+2356
+2344
+2451
+2396
+2335
+2387
+2357
+2381
+2358
+2371
+2360
+2355
+2351
+2354
+2351
 */
