@@ -186,6 +186,7 @@ class Problem {
 	}
 public:
 	// コンストラクタ
+	Problem(){}
 	Problem(const string file_name, const int start_position, const int goal_position) {
 		try {
 			// ファイルを読み込む
@@ -545,6 +546,7 @@ class Result {
 	int score_;
 public:
 	// コンストラクタ
+	Result(){}
 	Result(const size_t side_size, const size_t start, const int score) : ptr_(0) {
 		root_.resize(side_size);
 		root_[ptr_] = start;
@@ -583,53 +585,51 @@ public:
 
 // ソルバー
 class Solver {
+	Problem problem_;
+	Result result_, best_result_;
+	vector<char> side_flg_;
+
 	// 普通の深さ優先探索を行う
-	Result dfs(const Problem &problem, const bool corner_goal_flg) const {
-		// 探索の起点となる解
-		Result result(problem.side_size(), problem.get_start(), problem.get_pre_score());
-		// 最適解
-		Result best_result = result;
-		best_result.set_score(-9999);
+	Result dfs(const Problem &problem, const bool corner_goal_flg) {
+		problem_ = problem;
+		// 探索の起点となる解・最適解
+		best_result_ = result_ = Result(problem.side_size(), problem.get_start(), problem.get_pre_score());
+		best_result_.set_score(-9999);
 		// ある辺を踏破したか？
-		vector<char> side_flg = problem.get_side_flg();
+		side_flg_ = problem.get_side_flg();
 		// 探索開始
 		if (corner_goal_flg) {
-			dfs_cg(problem, result, best_result, side_flg);
+			dfs_cg();
 		}
 		else {
-			dfs(problem, result, best_result, side_flg);
+			dfs(problem_, result_, best_result_, side_flg_);
 		}
-		return best_result;
+		return best_result_;
 	}
-	void dfs_cg(
-		const Problem &problem,	//問題データ
-		Result &result,			//現在の進行ルート
-		Result &best_result,	//最適解
-		vector<char> &side_flg	//ある辺を踏破したか
-	) const noexcept {
+	void dfs_cg() noexcept {
 		// ゴール地点なら、とりあえずスコア判定を行う
-		if (result.now_point() == problem.get_goal()) {
-			if (result.get_score() > best_result.get_score()) {
-				best_result = result;
+		if (result_.now_point() == problem_.get_goal()) {
+			if (result_.get_score() > best_result_.get_score()) {
+				best_result_ = result_;
 				//cout << best_result.get_score() << "," << best_result << endl;
 			}
 			return;
 		}
 		// ネストを深くする
-		for (const auto &dir : problem.get_dir_list(result.now_point())) {
-			if (!side_flg[dir.side_index])
+		for (const auto &dir : problem_.get_dir_list(result_.now_point())) {
+			if (!side_flg_[dir.side_index])
 				continue;
 			// 進める
-			const int old_score = result.get_score();
-			result.move_side(dir.next_position);
-			result.set_score(problem.get_operation(dir.side_index).calc(result.get_score()));
-			side_flg[dir.side_index] = 0;
+			const int old_score = result_.get_score();
+			result_.move_side(dir.next_position);
+			result_.set_score(problem_.get_operation(dir.side_index).calc(result_.get_score()));
+			side_flg_[dir.side_index] = 0;
 			// 再帰を一段階深くする
-			dfs_cg(problem, result, best_result, side_flg);
+			dfs_cg();
 			// 戻す
-			side_flg[dir.side_index] = 1;
-			result.back_side();
-			result.set_score(old_score);
+			side_flg_[dir.side_index] = 1;
+			result_.back_side();
+			result_.set_score(old_score);
 		}
 	}
 	void dfs(
@@ -637,7 +637,7 @@ class Solver {
 		Result &result,			//現在の進行ルート
 		Result &best_result,	//最適解
 		vector<char> &side_flg	//ある辺を踏破したか
-	) const noexcept {
+	) noexcept {
 		// ゴール地点なら、とりあえずスコア判定を行う
 		if (result.now_point() == problem.get_goal()) {
 			if (result.get_score() > best_result.get_score()) {
@@ -666,7 +666,7 @@ public:
 	// コンストラクタ
 	Solver() {}
 	// 解を探索する
-	Result solve(const Problem &problem, unsigned int threads) const {
+	Result solve(const Problem &problem, unsigned int threads) {
 		return dfs(problem, problem.corner_goal_flg());
 	}
 	// 問題を分割保存する
@@ -713,3 +713,26 @@ int main(int argc, char* argv[]) {
 		return EXIT_FAILURE;
 	}
 }
+
+/* このコミットの記録(2484.1±平均誤差2.85703)
+2492
+2509
+2484
+2490
+2490
+2489
+2467
+2468
+2472
+2488
+2472
+2471
+2470
+2505
+2473
+2482
+2476
+2496
+2486
+2502
+*/
