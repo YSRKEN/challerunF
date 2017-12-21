@@ -155,6 +155,14 @@ class Problem {
 		}
 		return result;
 	}
+	void erase_root(const size_t point_a, const size_t point_b) {
+		const int index_ab = get_index(point_a, point_b);
+		const int index_ba = get_index(point_b, point_a);
+		if(index_ab >= 0)
+			field_[point_a].erase(field_[point_a].begin() + index_ab);
+		if (index_ba >= 0)
+		field_[point_b].erase(field_[point_b].begin() + index_ba);
+	}
 public:
 	// コンストラクタ
 	Problem(const string file_name, const int start_position, const int goal_position) {
@@ -258,13 +266,11 @@ public:
 					size_t pos_src = pre_root_[i];
 					size_t pos_dst = pre_root_[i + 1];
 					const int index_sd = get_index(pos_src, pos_dst);
-					const int index_ds = get_index(pos_dst, pos_src);
 					// 演算子を利用した演算を行う
 					const auto &ope = side_[field_[pos_src][index_sd].side_index];
 					pre_score_ = ope.calc(pre_score_);
 					// 演算に使用した部分を削除する
-					field_[pos_src].erase(field_[pos_src].begin() + index_sd);
-					field_[pos_dst].erase(field_[pos_dst].begin() + index_ds);
+					erase_root(pos_src, pos_dst);
 				}
 				// 移動後に生じた「使用できない演算子」を削除して回る
 				bool erease_flg;
@@ -272,8 +278,16 @@ public:
 					erease_flg = false;
 					for (size_t y = 0; y < height_; ++y) {
 						for (size_t x = 0; x < width_; ++x) {
-
+							size_t pos_src = y * width_ + x;
+							if (field_[pos_src].size() == 1 && pos_src != goal_) {
+								size_t pos_dst = field_[pos_src][0].next_position;
+								erase_root(pos_src, pos_dst);
+								erease_flg = true;
+								break;
+							}
 						}
+						if (erease_flg)
+							break;
 					}
 				} while (erease_flg);
 			}
