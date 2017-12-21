@@ -572,7 +572,7 @@ public:
 		--ptr_;
 	}
 	// 現在の位置
-	size_t now_point() const noexcept {
+	size_t now_position() const noexcept {
 		return root_[ptr_];
 	}
 	// getterとsetter
@@ -599,6 +599,7 @@ class Solver {
 	Result result_, best_result_;
 	vector<char> side_flg_;
 	vector<char> available_side_count_;
+	size_t now_position_;
 
 	// 普通の深さ優先探索を行う
 	Result dfs(const Problem &problem, const bool corner_goal_flg) {
@@ -611,6 +612,8 @@ class Solver {
 		// ある地点の周りにある、まだ通れる辺の数
 		// (ただしゴール地点だけ+1しておく)
 		available_side_count_ = problem.get_available_side_count();
+		// 始点
+		now_position_ = result_.now_position();
 		// 探索開始
 		if (corner_goal_flg) {
 			dfs_cg();
@@ -622,7 +625,7 @@ class Solver {
 	}
 	void dfs_cg() noexcept {
 		// ゴール地点なら、とりあえずスコア判定を行う
-		if (result_.now_point() == problem_.get_goal()) {
+		if (now_position_ == problem_.get_goal()) {
 			if (result_.get_score() > best_result_.get_score()) {
 				best_result_ = result_;
 				//cout << best_result.get_score() << "," << best_result << endl;
@@ -630,16 +633,17 @@ class Solver {
 			return;
 		}
 		// ネストを深くする
-		for (const auto &dir : problem_.get_dir_list(result_.now_point())) {
+		for (const auto &dir : problem_.get_dir_list(now_position_)) {
 			if (!side_flg_[dir.side_index])
 				continue;
 			if (available_side_count_[dir.next_position] <= 1)
 				continue;
 			// 進める
 			const int old_score = result_.get_score();
-			--available_side_count_[result_.now_point()];
+			--available_side_count_[now_position_];
 			--available_side_count_[dir.next_position];
 			result_.move_side(dir.next_position);
+			now_position_ = dir.next_position;
 			result_.set_score(problem_.get_operation(dir.side_index).calc(result_.get_score()));
 			side_flg_[dir.side_index] = 0;
 			// 再帰を一段階深くする
@@ -647,8 +651,9 @@ class Solver {
 			// 戻す
 			side_flg_[dir.side_index] = 1;
 			result_.back_side();
+			now_position_ = result_.now_position();
 			++available_side_count_[dir.next_position];
-			++available_side_count_[result_.now_point()];
+			++available_side_count_[now_position_];
 			result_.set_score(old_score);
 		}
 	}
@@ -659,14 +664,14 @@ class Solver {
 		vector<char> &side_flg	//ある辺を踏破したか
 	) noexcept {
 		// ゴール地点なら、とりあえずスコア判定を行う
-		if (result.now_point() == problem.get_goal()) {
+		if (result.now_position() == problem.get_goal()) {
 			if (result.get_score() > best_result.get_score()) {
 				best_result = result;
 				//cout << best_result.get_score() << "," << best_result << endl;
 			}
 		}
 		// ネストを深くする
-		for (const auto &dir : problem.get_dir_list(result.now_point())) {
+		for (const auto &dir : problem.get_dir_list(result.now_position())) {
 			if (!side_flg[dir.side_index])
 				continue;
 			// 進める
@@ -735,26 +740,3 @@ int main(int argc, char* argv[]) {
 		return EXIT_FAILURE;
 	}
 }
-
-/* このコミットの記録(2368.1±平均誤差5.93823)
-2356
-2357
-2389
-2351
-2402
-2356
-2344
-2451
-2396
-2335
-2387
-2357
-2381
-2358
-2371
-2360
-2355
-2351
-2354
-2351
-*/
