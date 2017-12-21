@@ -1,6 +1,6 @@
 ﻿// 条件分岐を減らし、より素直なコードに書き直した
 
-#pragma execution_character_set("utf-8")
+//#pragma execution_character_set("utf-8")
 
 #include <chrono>
 #include <cmath>
@@ -16,6 +16,26 @@ using std::endl;
 using std::ostream;
 using std::string;
 using std::vector;
+
+class StopWatch {
+	std::chrono::system_clock::time_point start_time;
+	std::chrono::system_clock::time_point end_time;
+public:
+	// ストップウォッチを開始
+	void Start() noexcept{ start_time = std::chrono::system_clock::now(); }
+	// ストップウォッチを停止
+	void Stop() noexcept{ end_time = std::chrono::system_clock::now(); }
+	// 経過時間を返す
+	long long ElapsedNanoseconds() const noexcept {
+		return std::chrono::duration_cast<std::chrono::nanoseconds>(end_time - start_time).count();
+	}
+	long long ElapsedMicroseconds() const noexcept {
+		return std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
+	}
+	long long ElapsedMilliseconds() const noexcept {
+		return std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
+	}
+};
 
 // ソフトウェアの動作設定
 class Setting {
@@ -88,44 +108,45 @@ public:
 	}
 };
 
-// 問題データ
-class Problem {
-	// 演算データ
-	// 数値を×mul_num＋add_numする役割を担う
-	struct Operation {
-		// 掛け算する定数
-		int mul_num = 1;
-		// 足し算する定数
-		int add_num = 0;
-		// 文字列化
-		string str() const noexcept{
-			if (add_num == 0) {
-				if (mul_num != 1) {
-					return "*" + std::to_string(mul_num);
-				}
-				else {
-					return "";
-				}
-			}
-			else if(add_num > 0){
-				return "+" + std::to_string(add_num);
+// 演算データ
+// 数値を×mul_num＋add_numする役割を担う
+struct Operation {
+	// 掛け算する定数
+	int mul_num = 1;
+	// 足し算する定数
+	int add_num = 0;
+	// 文字列化
+	string str() const noexcept {
+		if (add_num == 0) {
+			if (mul_num != 1) {
+				return "*" + std::to_string(mul_num);
 			}
 			else {
-				return "-" + std::to_string(std::abs(add_num));
+				return "";
 			}
 		}
-		// 計算を適用
-		inline int calc(const int x) const noexcept {
-			return x * mul_num + add_num;
+		else if (add_num > 0) {
+			return "+" + std::to_string(add_num);
 		}
-	};
-	// 方向データ
-	struct Direction {
-		// 行き先
-		size_t next_position;
-		// 辺の番号
-		size_t side_index;
-	};
+		else {
+			return "-" + std::to_string(std::abs(add_num));
+		}
+	}
+	// 計算を適用
+	inline int calc(const int x) const noexcept {
+		return x * mul_num + add_num;
+	}
+};
+// 方向データ
+struct Direction {
+	// 行き先
+	size_t next_position;
+	// 辺の番号
+	size_t side_index;
+};
+
+// 問題データ
+class Problem {
 	// 頂点データ
 	// field_[マス目][各方向] = 方向データ
 	// [各方向]部分を可変長(vector)にしているのがポイント
@@ -149,7 +170,7 @@ class Problem {
 		int result = -1;
 		for (size_t i = 0; i < field_[point_a].size(); ++i) {
 			if (field_[point_a][i].next_position == point_b) {
-				result = i;
+				result = static_cast<int>(i);
 				break;
 			}
 		}
@@ -298,6 +319,36 @@ public:
 		catch (...) {
 			throw "問題ファイルとして解釈できませんでした。";
 		}
+	}
+	// 辺の大きさを返す
+	size_t side_size() const noexcept {
+		return side_.size();
+	}
+	// 辺が使えるか否かを表すフラグ一覧(の初期値)を返す
+	vector<char> get_side_flg() const {
+		vector<char> side_flg(side_.size(), 0);
+		for (const auto &point : field_) {
+			for (const auto &dir : point) {
+				side_flg[dir.side_index] = 1;
+			}
+		}
+		return side_flg;
+	}
+	// getter
+	size_t get_start() const noexcept {
+		return start_;
+	}
+	size_t get_goal() const noexcept {
+		return goal_;
+	}
+	const vector<Direction>& get_dir_list(const size_t point) const noexcept {
+		return field_[point];
+	}
+	const Operation& get_operation(const size_t side_index) const noexcept {
+		return side_[side_index];
+	}
+	int get_pre_score() const noexcept {
+		return pre_score_;
 	}
 	// 出力用(等幅フォント用)
 	friend ostream& operator << (ostream& os, const Problem& problem) {
@@ -483,6 +534,107 @@ public:
 	}
 };
 
+// 解答データ
+class Result {
+	vector<size_t> root_;
+	size_t ptr_;
+	int score_;
+public:
+	// コンストラクタ
+	Result(const size_t side_size, const size_t start, const int score) : ptr_(0) {
+		root_.resize(side_size);
+		root_[ptr_] = start;
+		score_ = score;
+	}
+	// 辺を移動した際の操作
+	void move_side(const size_t point) noexcept {
+		++ptr_;
+		root_[ptr_] = point;
+	}
+	// 辺を戻した際の操作
+	void back_side() noexcept {
+		--ptr_;
+	}
+	// 現在の位置
+	size_t now_point() const noexcept {
+		return root_[ptr_];
+	}
+	// getterとsetter
+	int get_score() const noexcept {
+		return score_;
+	}
+	void set_score(const int score) noexcept {
+		score_ = score;
+	}
+	// 出力用(等幅フォント用)
+	friend ostream& operator << (ostream& os, const Result& result) {
+		for (size_t i = 0; i <= result.ptr_; ++i) {
+			if (i != 0)
+				os << "->";
+			os << result.root_[i];
+		}
+		return os;
+	}
+};
+
+// ソルバー
+class Solver {
+	// 普通の深さ優先探索を行う
+	Result dfs(const Problem &problem) const {
+		// 探索の起点となる解
+		Result result(problem.side_size(), problem.get_start(), problem.get_pre_score());
+		// 最適解
+		Result best_result = result;
+		best_result.set_score(-9999);
+		// ある辺を踏破したか？
+		vector<char> side_flg = problem.get_side_flg();
+		// 探索開始
+		dfs(problem, result, best_result, side_flg);
+		return best_result;
+	}
+	void dfs(
+		const Problem &problem,	//問題データ
+		Result &result,			//現在の進行ルート
+		Result &best_result,	//最適解
+		vector<char> &side_flg	//ある辺を踏破したか
+	) const noexcept {
+		// ゴール地点なら、とりあえずスコア判定を行う
+		if (result.now_point() == problem.get_goal()) {
+			if (result.get_score() > best_result.get_score()) {
+				best_result = result;
+				//cout << best_result.get_score() << "," << best_result << endl;
+			}
+		}
+		// ネストを深くする
+		for (const auto &dir : problem.get_dir_list(result.now_point())) {
+			if (!side_flg[dir.side_index])
+				continue;
+			// 進める
+			const int old_score = result.get_score();
+			result.move_side(dir.next_position);
+			result.set_score(problem.get_operation(dir.side_index).calc(result.get_score()));
+			side_flg[dir.side_index] = 0;
+			// 再帰を一段階深くする
+			dfs(problem, result, best_result, side_flg);
+			// 戻す
+			side_flg[dir.side_index] = 1;
+			result.back_side();
+			result.set_score(old_score);
+		}
+	}
+public:
+	// コンストラクタ
+	Solver() {}
+	// 解を探索する
+	Result solve(const Problem &problem, unsigned int threads) const {
+		return dfs(problem);
+	}
+	// 問題を分割保存する
+	void split(const Problem &problem, unsigned int splits) const {
+
+	}
+};
+
 int main(int argc, char* argv[]) {
 	try {
 		// コマンドライン引数から、ソフトウェアの動作設定を読み取る
@@ -491,6 +643,24 @@ int main(int argc, char* argv[]) {
 		// 問題ファイルを読み取る
 		Problem problem(setting.file_name(), setting.start_position(), setting.goal_position());
 		cout << problem << endl;
+		//
+		Solver solver;
+		if (setting.solver_flg()) {
+			// 解を探索する
+			StopWatch sw;
+			sw.Start();
+			const auto result = solver.solve(problem, setting.split_count());
+			sw.Stop();
+			// 結果を表示する
+			cout << "【結果】" << endl;
+			cout << "最高得点：" << result.get_score() << endl;
+			cout << "最高経路：" << result << endl;
+			cout << "計算時間：" << sw.ElapsedMilliseconds() << "[ms]" << endl;
+			return 0;
+		}
+		else {
+			// 問題を分割保存する
+		}
 	}
 	catch (const char *s) {
 		cout << "エラー：" << s << endl;
