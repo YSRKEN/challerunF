@@ -334,6 +334,10 @@ public:
 		}
 		return side_flg;
 	}
+	// 角にゴールがあるか？
+	bool corner_goal_flg() const noexcept {
+		return (goal_ == 0 || goal_ == width_ - 1 || goal_ == width_ * (height_ - 1) || goal_ == width_ * height_ - 1);
+	}
 	// getter
 	size_t get_start() const noexcept {
 		return start_;
@@ -580,7 +584,7 @@ public:
 // ソルバー
 class Solver {
 	// 普通の深さ優先探索を行う
-	Result dfs(const Problem &problem) const {
+	Result dfs(const Problem &problem, const bool corner_goal_flg) const {
 		// 探索の起点となる解
 		Result result(problem.side_size(), problem.get_start(), problem.get_pre_score());
 		// 最適解
@@ -589,8 +593,44 @@ class Solver {
 		// ある辺を踏破したか？
 		vector<char> side_flg = problem.get_side_flg();
 		// 探索開始
-		dfs(problem, result, best_result, side_flg);
+		if (corner_goal_flg) {
+			dfs_cg(problem, result, best_result, side_flg);
+		}
+		else {
+			dfs(problem, result, best_result, side_flg);
+		}
 		return best_result;
+	}
+	void dfs_cg(
+		const Problem &problem,	//問題データ
+		Result &result,			//現在の進行ルート
+		Result &best_result,	//最適解
+		vector<char> &side_flg	//ある辺を踏破したか
+	) const noexcept {
+		// ゴール地点なら、とりあえずスコア判定を行う
+		if (result.now_point() == problem.get_goal()) {
+			if (result.get_score() > best_result.get_score()) {
+				best_result = result;
+				//cout << best_result.get_score() << "," << best_result << endl;
+			}
+			return;
+		}
+		// ネストを深くする
+		for (const auto &dir : problem.get_dir_list(result.now_point())) {
+			if (!side_flg[dir.side_index])
+				continue;
+			// 進める
+			const int old_score = result.get_score();
+			result.move_side(dir.next_position);
+			result.set_score(problem.get_operation(dir.side_index).calc(result.get_score()));
+			side_flg[dir.side_index] = 0;
+			// 再帰を一段階深くする
+			dfs_cg(problem, result, best_result, side_flg);
+			// 戻す
+			side_flg[dir.side_index] = 1;
+			result.back_side();
+			result.set_score(old_score);
+		}
 	}
 	void dfs(
 		const Problem &problem,	//問題データ
@@ -627,7 +667,7 @@ public:
 	Solver() {}
 	// 解を探索する
 	Result solve(const Problem &problem, unsigned int threads) const {
-		return dfs(problem);
+		return dfs(problem, problem.corner_goal_flg());
 	}
 	// 問題を分割保存する
 	void split(const Problem &problem, unsigned int splits) const {
