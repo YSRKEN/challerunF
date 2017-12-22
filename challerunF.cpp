@@ -349,6 +349,13 @@ public:
 	bool corner_goal_flg() const noexcept {
 		return (goal_ == 0 || goal_ == width_ - 1 || goal_ == width_ * (height_ - 1) || goal_ == width_ * height_ - 1);
 	}
+	// 問題の奇偶を調べる
+	bool is_odd() const noexcept {
+		int sx = start_ % width_, sy = start_ / width_;
+		int gx = goal_ % width_, gy = goal_ / width_;
+		int x_flg = std::abs(sx - gx) % 2, y_flg = std::abs(sy - gy) % 2;
+		return ((x_flg + y_flg) % 2 == 1);
+	}
 	// getter
 	size_t get_start() const noexcept {
 		return start_;
@@ -619,9 +626,96 @@ class Solver {
 			dfs_cg();
 		}
 		else {
-			dfs(problem_, result_, best_result_, side_flg_);
+			dfs();
 		}
 		return best_result_;
+	}
+	Result dfs2(const Problem &problem, const bool corner_goal_flg) {
+		problem_ = problem;
+		// 探索の起点となる解・最適解
+		best_result_ = result_ = Result(problem.side_size(), problem.get_start(), problem.get_pre_score());
+		best_result_.set_score(-9999);
+		// ある辺を踏破したか？
+		side_flg_ = problem.get_side_flg();
+		// ある地点の周りにある、まだ通れる辺の数
+		// (ただしゴール地点だけ+1しておく)
+		available_side_count_ = problem.get_available_side_count();
+		// 始点
+		now_position_ = result_.now_position();
+		// 探索開始
+		if (corner_goal_flg) {
+			// 始点と終点の奇偶を調べる
+			if (problem.is_odd()) {
+				dfs_cg2_b();
+			}
+			else {
+				dfs_cg2_a();
+			}
+		}
+		else {
+			dfs();
+		}
+		return best_result_;
+	}
+	void dfs_cg2_a() noexcept {
+		// ゴール地点なら、とりあえずスコア判定を行う
+		if (now_position_ == problem_.get_goal()) {
+			if (result_.get_score() > best_result_.get_score()) {
+				best_result_ = result_;
+				//cout << best_result.get_score() << "," << best_result << endl;
+			}
+			return;
+		}
+		// ネストを深くする
+		for (const auto &dir : problem_.get_dir_list(now_position_)) {
+			if (!side_flg_[dir.side_index])
+				continue;
+			if (available_side_count_[dir.next_position] <= 1)
+				continue;
+			// 進める
+			const int old_score = result_.get_score();
+			--available_side_count_[now_position_];
+			--available_side_count_[dir.next_position];
+			result_.move_side(dir.next_position);
+			now_position_ = dir.next_position;
+			result_.set_score(problem_.get_operation(dir.side_index).calc(result_.get_score()));
+			side_flg_[dir.side_index] = 0;
+			// 再帰を一段階深くする
+			dfs_cg2_b();
+			// 戻す
+			side_flg_[dir.side_index] = 1;
+			result_.back_side();
+			now_position_ = result_.now_position();
+			++available_side_count_[dir.next_position];
+			++available_side_count_[now_position_];
+			result_.set_score(old_score);
+		}
+	}
+	void dfs_cg2_b() noexcept {
+		// ネストを深くする
+		for (const auto &dir : problem_.get_dir_list(now_position_)) {
+			if (!side_flg_[dir.side_index])
+				continue;
+			if (available_side_count_[dir.next_position] <= 1)
+				continue;
+			// 進める
+			const int old_score = result_.get_score();
+			--available_side_count_[now_position_];
+			--available_side_count_[dir.next_position];
+			result_.move_side(dir.next_position);
+			now_position_ = dir.next_position;
+			result_.set_score(problem_.get_operation(dir.side_index).calc(result_.get_score()));
+			side_flg_[dir.side_index] = 0;
+			// 再帰を一段階深くする
+			dfs_cg2_a();
+			// 戻す
+			side_flg_[dir.side_index] = 1;
+			result_.back_side();
+			now_position_ = result_.now_position();
+			++available_side_count_[dir.next_position];
+			++available_side_count_[now_position_];
+			result_.set_score(old_score);
+		}
 	}
 	void dfs_cg() noexcept {
 		// ゴール地点なら、とりあえずスコア判定を行う
@@ -657,34 +751,37 @@ class Solver {
 			result_.set_score(old_score);
 		}
 	}
-	void dfs(
-		const Problem &problem,	//問題データ
-		Result &result,			//現在の進行ルート
-		Result &best_result,	//最適解
-		vector<char> &side_flg	//ある辺を踏破したか
-	) noexcept {
+	void dfs() noexcept {
 		// ゴール地点なら、とりあえずスコア判定を行う
-		if (result.now_position() == problem.get_goal()) {
-			if (result.get_score() > best_result.get_score()) {
-				best_result = result;
+		if (now_position_ == problem_.get_goal()) {
+			if (result_.get_score() > best_result_.get_score()) {
+				best_result_ = result_;
 				//cout << best_result.get_score() << "," << best_result << endl;
 			}
 		}
 		// ネストを深くする
-		for (const auto &dir : problem.get_dir_list(result.now_position())) {
-			if (!side_flg[dir.side_index])
+		for (const auto &dir : problem_.get_dir_list(now_position_)) {
+			if (!side_flg_[dir.side_index])
+				continue;
+			if (available_side_count_[dir.next_position] <= 1)
 				continue;
 			// 進める
-			const int old_score = result.get_score();
-			result.move_side(dir.next_position);
-			result.set_score(problem.get_operation(dir.side_index).calc(result.get_score()));
-			side_flg[dir.side_index] = 0;
+			const int old_score = result_.get_score();
+			--available_side_count_[now_position_];
+			--available_side_count_[dir.next_position];
+			result_.move_side(dir.next_position);
+			now_position_ = dir.next_position;
+			result_.set_score(problem_.get_operation(dir.side_index).calc(result_.get_score()));
+			side_flg_[dir.side_index] = 0;
 			// 再帰を一段階深くする
-			dfs(problem, result, best_result, side_flg);
+			dfs();
 			// 戻す
-			side_flg[dir.side_index] = 1;
-			result.back_side();
-			result.set_score(old_score);
+			side_flg_[dir.side_index] = 1;
+			result_.back_side();
+			now_position_ = result_.now_position();
+			++available_side_count_[dir.next_position];
+			++available_side_count_[now_position_];
+			result_.set_score(old_score);
 		}
 	}
 public:
@@ -693,6 +790,9 @@ public:
 	// 解を探索する
 	Result solve(const Problem &problem, unsigned int threads) {
 		return dfs(problem, problem.corner_goal_flg());
+	}
+	Result solve2(const Problem &problem, unsigned int threads) {
+		return dfs2(problem, problem.corner_goal_flg());
 	}
 	// 問題を分割保存する
 	void split(const Problem &problem, unsigned int splits) const {
@@ -709,14 +809,23 @@ int main(int argc, char* argv[]) {
 		Problem problem(setting.file_name(), setting.start_position(), setting.goal_position());
 		//cout << problem << endl;
 		//
-		Solver solver;
 		if (setting.solver_flg()) {
 			// 解を探索する
+			Solver solver;
 			Result result;
 			for (size_t i = 0; i < 20; ++i) {
 				StopWatch sw;
 				sw.Start();
 				result = solver.solve(problem, setting.split_count());
+				sw.Stop();
+				cout << sw.ElapsedMilliseconds() << endl;
+			}
+			cout << endl;
+			Solver solver2;
+			for (size_t i = 0; i < 20; ++i) {
+				StopWatch sw;
+				sw.Start();
+				result = solver2.solve2(problem, setting.split_count());
 				sw.Stop();
 				cout << sw.ElapsedMilliseconds() << endl;
 			}
