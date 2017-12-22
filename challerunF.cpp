@@ -115,6 +115,12 @@ struct Operation {
 	int mul_num = 1;
 	// 足し算する定数
 	int add_num = 0;
+	// コンストラクタ
+	Operation(){}
+	Operation(const int mul, const int add) noexcept{
+		mul_num = mul;
+		add_num = add;
+	}
 	// 文字列化
 	string str() const noexcept {
 		if (add_num == 0) {
@@ -349,6 +355,53 @@ public:
 	bool corner_goal_flg() const noexcept {
 		return (goal_ == 0 || goal_ == width_ - 1 || goal_ == width_ * (height_ - 1) || goal_ == width_ * height_ - 1);
 	}
+	// ショートカット可能な場合、その演算や辺番号などをメモしておく
+	void memorize_shortcut(
+		vector<vector<char>> &shortcut_flg,
+		vector<vector<Operation>> &shortcut_operation,
+		vector<vector<size_t>> &shortcut_index,
+		vector<vector<size_t>> &shortcut_nextpos) const {
+		// メモリ確保
+		shortcut_flg.resize(width_ * height_);
+		std::fill(shortcut_flg.begin(), shortcut_flg.end(), vector<char>(width_ * height_, 0));
+		shortcut_operation.resize(width_ * height_);
+		std::fill(shortcut_operation.begin(), shortcut_operation.end(), vector<Operation>(width_ * height_));
+		shortcut_index.resize(width_ * height_);
+		std::fill(shortcut_index.begin(), shortcut_index.end(), vector<size_t>(width_ * height_));
+		shortcut_nextpos.resize(width_ * height_);
+		std::fill(shortcut_nextpos.begin(), shortcut_nextpos.end(), vector<size_t>(width_ * height_));
+		// 代入
+		for (size_t i = 0; i < width_ * height_; ++i) {
+			// ショートカット成立条件：2方向だけに行ける道で、かつ中継点がゴールではないこと
+			if (field_[i].size() != 2)
+				continue;
+			if (i == goal_)
+				continue;
+			// それぞれの行き先と演算子を取り出す
+			const auto &position1 = field_[i][0].next_position;
+			const auto &position2 = field_[i][1].next_position;
+			const auto &ope1 = side_[field_[i][0].side_index];
+			const auto &ope2 = side_[field_[i][1].side_index];
+			// 演算を合成する
+			// A2*(A1*X+B1)+B2=A1*A2*X+B1*A2+B2
+			const Operation ope12(ope1.mul_num * ope2.mul_num,
+				ope1.add_num * ope2.mul_num + ope2.add_num);
+			const Operation ope21(ope2.mul_num * ope1.mul_num,
+				ope2.add_num * ope1.mul_num + ope1.add_num);
+			cout << position1 << "->" << position2 << " : " << ope12.str() << endl;
+			cout << position2 << "->" << position1 << " : " << ope21.str() << endl;
+			//
+			shortcut_flg[position1][i] = 1;
+			shortcut_operation[position1][i] = ope12;
+			shortcut_index[position1][i] = field_[i][1].side_index;
+			shortcut_nextpos[position1][i] = position2;
+			//
+			shortcut_flg[position2][i] = 1;
+			shortcut_operation[position2][i] = ope21;
+			shortcut_index[position2][i] = field_[i][0].side_index;
+			shortcut_nextpos[position2][i] = position1;
+		}
+	}
 	// getter
 	size_t get_start() const noexcept {
 		return start_;
@@ -571,6 +624,9 @@ public:
 	void back_side() noexcept {
 		--ptr_;
 	}
+	void back_side2() noexcept {
+		ptr_ -= 2;
+	}
 	// 現在の位置
 	size_t now_position() const noexcept {
 		return root_[ptr_];
@@ -600,6 +656,10 @@ class Solver {
 	vector<char> side_flg_;
 	vector<char> available_side_count_;
 	size_t now_position_;
+	vector<vector<char>> shortcut_flg_;
+	vector<vector<Operation>> shortcut_operation_;
+	vector<vector<size_t>> shortcut_index_;
+	vector<vector<size_t>> shortcut_nextpos_;
 
 	// 普通の深さ優先探索を行う
 	Result dfs(const Problem &problem, const bool corner_goal_flg) {
@@ -614,6 +674,8 @@ class Solver {
 		available_side_count_ = problem.get_available_side_count();
 		// 始点
 		now_position_ = result_.now_position();
+		// ショートカット可能な場合、その演算や辺番号などをメモしておく
+		problem.memorize_shortcut(shortcut_flg_, shortcut_operation_, shortcut_index_, shortcut_nextpos_);
 		// 探索開始
 		if (corner_goal_flg) {
 			dfs_cg();
@@ -623,7 +685,7 @@ class Solver {
 		}
 		return best_result_;
 	}
-	void dfs_cg() noexcept {
+	void dfs_cg_() noexcept {
 		// ゴール地点なら、とりあえずスコア判定を行う
 		if (now_position_ == problem_.get_goal()) {
 			if (result_.get_score() > best_result_.get_score()) {
@@ -647,7 +709,7 @@ class Solver {
 			result_.set_score(problem_.get_operation(dir.side_index).calc(result_.get_score()));
 			side_flg_[dir.side_index] = 0;
 			// 再帰を一段階深くする
-			dfs_cg();
+			dfs_cg_();
 			// 戻す
 			side_flg_[dir.side_index] = 1;
 			result_.back_side();
@@ -655,6 +717,66 @@ class Solver {
 			++available_side_count_[dir.next_position];
 			++available_side_count_[now_position_];
 			result_.set_score(old_score);
+		}
+	}
+	void dfs_cg() noexcept {
+		// ゴール地点なら、とりあえずスコア判定を行う
+		if (now_position_ == problem_.get_goal()) {
+			if (result_.get_score() > best_result_.get_score()) {
+				best_result_ = result_;
+				//cout << best_result.get_score() << "," << best_result << endl;
+			}
+			return;
+		}
+		// ネストを深くする
+		for (const auto &dir : problem_.get_dir_list(now_position_)) {
+			if (!side_flg_[dir.side_index])
+				continue;
+			if (available_side_count_[dir.next_position] <= 1)
+				continue;
+			// 進める
+			if (shortcut_flg_[now_position_][dir.next_position]) {
+				// ショートカット可能ならショートカットする
+				const int old_score = result_.get_score();
+				const size_t &nextnext = shortcut_nextpos_[now_position_][dir.next_position];
+				--available_side_count_[now_position_];
+				available_side_count_[dir.next_position] -= 2;
+				--available_side_count_[nextnext];
+				result_.move_side(dir.next_position);
+				result_.move_side(nextnext);
+				now_position_ = nextnext;
+				result_.set_score(shortcut_operation_[now_position_][dir.next_position].calc(result_.get_score()));
+				side_flg_[dir.side_index] = 0;
+				side_flg_[shortcut_index_[now_position_][dir.next_position]] = 0;
+				// 再帰を一段階深くする
+				dfs_cg();
+				// 戻す
+				side_flg_[shortcut_index_[now_position_][dir.next_position]] = 1;
+				side_flg_[dir.side_index] = 1;
+				result_.back_side2();
+				now_position_ = result_.now_position();
+				++available_side_count_[shortcut_nextpos_[now_position_][dir.next_position]];
+				available_side_count_[dir.next_position] += 2;
+				++available_side_count_[now_position_];
+				result_.set_score(old_score);
+			}else{
+				const int old_score = result_.get_score();
+				--available_side_count_[now_position_];
+				--available_side_count_[dir.next_position];
+				result_.move_side(dir.next_position);
+				now_position_ = dir.next_position;
+				result_.set_score(problem_.get_operation(dir.side_index).calc(result_.get_score()));
+				side_flg_[dir.side_index] = 0;
+				// 再帰を一段階深くする
+				dfs_cg();
+				// 戻す
+				side_flg_[dir.side_index] = 1;
+				result_.back_side();
+				now_position_ = result_.now_position();
+				++available_side_count_[dir.next_position];
+				++available_side_count_[now_position_];
+				result_.set_score(old_score);
+			}
 		}
 	}
 	void dfs(
