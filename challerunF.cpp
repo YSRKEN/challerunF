@@ -12,6 +12,8 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <mutex>
+#include <future>
 
 using std::cout;
 using std::endl;
@@ -621,6 +623,10 @@ public:
 	size_t now_position() const noexcept {
 		return root_[ptr_];
 	}
+	// getter
+	vector<size_t> get_root() const {
+		return vector<size_t>(root_.begin(), root_.begin() + ptr_ + 1);
+	}
 	// 出力用(等幅フォント用)
 	friend ostream& operator << (ostream& os, const Result& result) {
 		for (size_t i = 0; i <= result.ptr_; ++i) {
@@ -633,6 +639,9 @@ public:
 };
 
 // ソルバー
+size_t g_threads = 1;
+size_t g_max_threads;
+std::mutex g_mtx;
 class Solver {
 	Problem problem_;
 	Result result_, best_result_;
@@ -774,52 +783,124 @@ class Solver {
 			}
 			return;
 		}
-		// ネストを深くする
-		--available_side_count_[now_position];
-		for (const auto &dir : problem_.get_dir_list(now_position)) {
-			if (!side_flg_[dir.side_index])
-				continue;
-			if (available_side_count_[dir.next_position] <= 1)
-				continue;
-			// 進める
-			const int old_score = score_;
-			--available_side_count_[dir.next_position];
-			result_.move_side(dir.next_position);
-			score_ = problem_.get_operation(dir.side_index).calc(score_);
-			side_flg_[dir.side_index] = 0;
-			// 再帰を一段階深くする
-			dfs_cg_b2(dir.next_position);
-			// 戻す
-			side_flg_[dir.side_index] = 1;
-			result_.back_side();
-			++available_side_count_[dir.next_position];
-			score_ = old_score;
+		if (g_threads < g_max_threads) {
+			// 動かせる手を列挙する
+			const auto &dir_list = problem_.get_dir_list(now_position);
+			vector<std::future<std::pair<Result, int>>> f_result(dir_list.size());
+			vector<std::pair<Result, int>> result_get(dir_list.size());
+			// 実際に動かす
+			g_mtx.lock(); g_threads += dir_list.size() - 1; /*cout << "a:" << g_threads << endl;*/ g_mtx.unlock();
+			for (size_t di = 0; di < dir_list.size(); ++di) {
+				const auto next_p = dir_list[di].next_position;
+				f_result[di] = std::async(std::launch::async, [&] {
+					auto new_problem = problem_;
+					auto new_result = result_;
+					new_result.move_side(next_p);
+					for (size_t i = 1; i < new_result.get_root().size(); ++i) {
+						new_problem.move(new_result.get_root()[i]);
+					}
+					Solver new_solver;
+					return new_solver.solve2(new_problem, g_max_threads);
+				});
+			}
+			// 結果を取得する
+			for (size_t di = 0; di < dir_list.size(); ++di) {
+				result_get[di] = f_result[di].get();
+			}
+			// 結果を統合する
+			g_mtx.lock(); g_threads -= dir_list.size() - 1;
+			for (size_t di = 0; di < dir_list.size(); ++di) {
+				if (best_score_ < result_get[di].second) {
+					best_result_ = result_get[di].first;
+					best_score_ = result_get[di].second;
+				}
+			}
+			g_mtx.unlock();
 		}
-		++available_side_count_[now_position];
+		else {
+			// ネストを深くする
+			--available_side_count_[now_position];
+			for (const auto &dir : problem_.get_dir_list(now_position)) {
+				if (!side_flg_[dir.side_index])
+					continue;
+				if (available_side_count_[dir.next_position] <= 1)
+					continue;
+				// 進める
+				const int old_score = score_;
+				--available_side_count_[dir.next_position];
+				result_.move_side(dir.next_position);
+				score_ = problem_.get_operation(dir.side_index).calc(score_);
+				side_flg_[dir.side_index] = 0;
+				// 再帰を一段階深くする
+				dfs_cg_b2(dir.next_position);
+				// 戻す
+				side_flg_[dir.side_index] = 1;
+				result_.back_side();
+				++available_side_count_[dir.next_position];
+				score_ = old_score;
+			}
+			++available_side_count_[now_position];
+		}
 	}
 	void dfs_cg_b2(const size_t now_position) noexcept {
-		// ネストを深くする
-		--available_side_count_[now_position];
-		for (const auto &dir : problem_.get_dir_list(now_position)) {
-			if (!side_flg_[dir.side_index])
-				continue;
-			if (available_side_count_[dir.next_position] <= 1)
-				continue;
-			// 進める
-			const int old_score = score_;
-			--available_side_count_[dir.next_position];
-			result_.move_side(dir.next_position);
-			score_ = problem_.get_operation(dir.side_index).calc(score_);
-			side_flg_[dir.side_index] = 0;
-			// 再帰を一段階深くする
-			dfs_cg_a2(dir.next_position);
-			// 戻す
-			side_flg_[dir.side_index] = 1;
-			result_.back_side();
-			++available_side_count_[dir.next_position];
-			score_ = old_score;
+		if (g_threads < g_max_threads) {
+			// 動かせる手を列挙する
+			const auto &dir_list = problem_.get_dir_list(now_position);
+			vector<std::future<std::pair<Result, int>>> f_result(dir_list.size());
+			vector<std::pair<Result, int>> result_get(dir_list.size());
+			// 実際に動かす
+			g_mtx.lock(); g_threads += dir_list.size() - 1; /*cout << "b:" << g_threads << endl;*/ g_mtx.unlock();
+			for (size_t di = 0; di < dir_list.size(); ++di) {
+				const auto next_p = dir_list[di].next_position;
+				f_result[di] = std::async(std::launch::async, [&] {
+					auto new_problem = problem_;
+					auto new_result = result_;
+					new_result.move_side(next_p);
+					for (size_t i = 1; i < new_result.get_root().size(); ++i) {
+						new_problem.move(new_result.get_root()[i]);
+					}
+					Solver new_solver;
+					return new_solver.solve2(new_problem, g_max_threads);
+				});
+			}
+			// 結果を取得する
+			for (size_t di = 0; di < dir_list.size(); ++di) {
+				result_get[di] = f_result[di].get();
+			}
+			// 結果を統合する
+			g_mtx.lock(); g_threads -= dir_list.size() - 1;
+			for (size_t di = 0; di < dir_list.size(); ++di) {
+				if (best_score_ < result_get[di].second) {
+					best_result_ = result_get[di].first;
+					best_score_ = result_get[di].second;
+				}
+			}
+			g_mtx.unlock();
 		}
-		++available_side_count_[now_position];
+		else {
+			// ネストを深くする
+			--available_side_count_[now_position];
+			for (const auto &dir : problem_.get_dir_list(now_position)) {
+				if (!side_flg_[dir.side_index])
+					continue;
+				if (available_side_count_[dir.next_position] <= 1)
+					continue;
+				// 進める
+				const int old_score = score_;
+				--available_side_count_[dir.next_position];
+				result_.move_side(dir.next_position);
+				score_ = problem_.get_operation(dir.side_index).calc(score_);
+				side_flg_[dir.side_index] = 0;
+				// 再帰を一段階深くする
+				dfs_cg_a2(dir.next_position);
+				// 戻す
+				side_flg_[dir.side_index] = 1;
+				result_.back_side();
+				++available_side_count_[dir.next_position];
+				score_ = old_score;
+			}
+			++available_side_count_[now_position];
+		}
 	}
 	void dfs_a(const size_t now_position) noexcept {
 		// ゴール地点なら、とりあえずスコア判定を行う
@@ -885,6 +966,7 @@ public:
 		return dfs(problem, problem.corner_goal_flg());
 	}
 	std::pair<Result, int> solve2(const Problem &problem, unsigned int threads) {
+		g_max_threads = threads;
 		return dfs2(problem, problem.corner_goal_flg());
 	}
 	// 問題を分割保存する
@@ -942,7 +1024,7 @@ int main(int argc, char* argv[]) {
 			Solver solver;
 			StopWatch sw;
 			sw.Start();
-			std::pair<Result, int> result = solver.solve(problem, setting.split_count());
+			std::pair<Result, int> result = solver.solve2(problem, setting.split_count());
 			sw.Stop();
 			cout << problem.get_width() << "," << problem.get_height() << "," << result.second << "," << result.first << "," << (1.0 * sw.ElapsedMilliseconds() / 1000) << endl;
 			/*vector<long long> time1, time2;
