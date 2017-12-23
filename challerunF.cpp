@@ -2,11 +2,13 @@
 
 //#pragma execution_character_set("utf-8")
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
+#include <numeric>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -143,6 +145,8 @@ struct Direction {
 	size_t next_position;
 	// 辺の番号
 	size_t side_index;
+	// 辺の情報
+	Operation operation;
 };
 
 // 問題データ
@@ -237,8 +241,8 @@ public:
 							size_t x = w;
 							size_t y = h / 2;
 							size_t p = y * width_ + x;
-							field_[p].push_back(Direction{ p + 1, side_.size() });
-							field_[p + 1].push_back(Direction{ p, side_.size() });
+							field_[p].push_back(Direction{ p + 1, side_.size(), ope });
+							field_[p + 1].push_back(Direction{ p, side_.size(), ope });
 						}
 					}
 					else {
@@ -247,8 +251,8 @@ public:
 							size_t x = w;
 							size_t y = (h - 1) / 2;
 							size_t p = y * width_ + x;
-							field_[p].push_back(Direction{ p + width_, side_.size() });
-							field_[p + width_].push_back(Direction{ p, side_.size() });
+							field_[p].push_back(Direction{ p + width_, side_.size(), ope });
+							field_[p + width_].push_back(Direction{ p, side_.size(), ope });
 						}
 					}
 					side_.push_back(ope);
@@ -589,6 +593,12 @@ public:
 	void set_score(const int score) noexcept {
 		score_ = score;
 	}
+	int& score_ref() noexcept {
+		return score_;
+	}
+	const int& score_const_ref() const noexcept {
+		return score_;
+	}
 	// 出力用(等幅フォント用)
 	friend ostream& operator << (ostream& os, const Result& result) {
 		for (size_t i = 0; i <= result.ptr_; ++i) {
@@ -623,10 +633,22 @@ class Solver {
 		now_position_ = result_.now_position();
 		// 探索開始
 		if (corner_goal_flg) {
-			dfs_cg();
+			// 始点と終点の奇偶を調べる
+			if (problem.is_odd()) {
+				dfs_cg_b();
+			}
+			else {
+				dfs_cg_a();
+			}
 		}
 		else {
-			dfs();
+			// 始点と終点の奇偶を調べる
+			if (problem.is_odd()) {
+				dfs_b();
+			}
+			else {
+				dfs_a();
+			}
 		}
 		return best_result_;
 	}
@@ -646,18 +668,24 @@ class Solver {
 		if (corner_goal_flg) {
 			// 始点と終点の奇偶を調べる
 			if (problem.is_odd()) {
-				dfs_cg2_b();
+				dfs_cg_b2();
 			}
 			else {
-				dfs_cg2_a();
+				dfs_cg_a2();
 			}
 		}
 		else {
-			dfs();
+			// 始点と終点の奇偶を調べる
+			if (problem.is_odd()) {
+				dfs_b();
+			}
+			else {
+				dfs_a();
+			}
 		}
 		return best_result_;
 	}
-	void dfs_cg2_a() noexcept {
+	void dfs_cg_a() noexcept {
 		// ゴール地点なら、とりあえずスコア判定を行う
 		if (now_position_ == problem_.get_goal()) {
 			if (result_.get_score() > best_result_.get_score()) {
@@ -667,6 +695,7 @@ class Solver {
 			return;
 		}
 		// ネストを深くする
+		--available_side_count_[now_position_];
 		for (const auto &dir : problem_.get_dir_list(now_position_)) {
 			if (!side_flg_[dir.side_index])
 				continue;
@@ -674,25 +703,25 @@ class Solver {
 				continue;
 			// 進める
 			const int old_score = result_.get_score();
-			--available_side_count_[now_position_];
 			--available_side_count_[dir.next_position];
 			result_.move_side(dir.next_position);
 			now_position_ = dir.next_position;
 			result_.set_score(problem_.get_operation(dir.side_index).calc(result_.get_score()));
 			side_flg_[dir.side_index] = 0;
 			// 再帰を一段階深くする
-			dfs_cg2_b();
+			dfs_cg_b();
 			// 戻す
 			side_flg_[dir.side_index] = 1;
 			result_.back_side();
 			now_position_ = result_.now_position();
 			++available_side_count_[dir.next_position];
-			++available_side_count_[now_position_];
 			result_.set_score(old_score);
 		}
+		++available_side_count_[now_position_];
 	}
-	void dfs_cg2_b() noexcept {
+	void dfs_cg_b() noexcept {
 		// ネストを深くする
+		--available_side_count_[now_position_];
 		for (const auto &dir : problem_.get_dir_list(now_position_)) {
 			if (!side_flg_[dir.side_index])
 				continue;
@@ -700,24 +729,23 @@ class Solver {
 				continue;
 			// 進める
 			const int old_score = result_.get_score();
-			--available_side_count_[now_position_];
 			--available_side_count_[dir.next_position];
 			result_.move_side(dir.next_position);
 			now_position_ = dir.next_position;
 			result_.set_score(problem_.get_operation(dir.side_index).calc(result_.get_score()));
 			side_flg_[dir.side_index] = 0;
 			// 再帰を一段階深くする
-			dfs_cg2_a();
+			dfs_cg_a();
 			// 戻す
 			side_flg_[dir.side_index] = 1;
 			result_.back_side();
 			now_position_ = result_.now_position();
 			++available_side_count_[dir.next_position];
-			++available_side_count_[now_position_];
 			result_.set_score(old_score);
 		}
+		++available_side_count_[now_position_];
 	}
-	void dfs_cg() noexcept {
+	void dfs_cg_a2() noexcept {
 		// ゴール地点なら、とりあえずスコア判定を行う
 		if (now_position_ == problem_.get_goal()) {
 			if (result_.get_score() > best_result_.get_score()) {
@@ -727,6 +755,7 @@ class Solver {
 			return;
 		}
 		// ネストを深くする
+		--available_side_count_[now_position_];
 		for (const auto &dir : problem_.get_dir_list(now_position_)) {
 			if (!side_flg_[dir.side_index])
 				continue;
@@ -734,24 +763,49 @@ class Solver {
 				continue;
 			// 進める
 			const int old_score = result_.get_score();
-			--available_side_count_[now_position_];
 			--available_side_count_[dir.next_position];
 			result_.move_side(dir.next_position);
 			now_position_ = dir.next_position;
 			result_.set_score(problem_.get_operation(dir.side_index).calc(result_.get_score()));
 			side_flg_[dir.side_index] = 0;
 			// 再帰を一段階深くする
-			dfs_cg();
+			dfs_cg_b2();
 			// 戻す
 			side_flg_[dir.side_index] = 1;
 			result_.back_side();
 			now_position_ = result_.now_position();
 			++available_side_count_[dir.next_position];
-			++available_side_count_[now_position_];
 			result_.set_score(old_score);
 		}
+		++available_side_count_[now_position_];
 	}
-	void dfs() noexcept {
+	void dfs_cg_b2() noexcept {
+		// ネストを深くする
+		--available_side_count_[now_position_];
+		for (const auto &dir : problem_.get_dir_list(now_position_)) {
+			if (!side_flg_[dir.side_index])
+				continue;
+			if (available_side_count_[dir.next_position] <= 1)
+				continue;
+			// 進める
+			const int old_score = result_.get_score();
+			--available_side_count_[dir.next_position];
+			result_.move_side(dir.next_position);
+			now_position_ = dir.next_position;
+			result_.set_score(problem_.get_operation(dir.side_index).calc(result_.get_score()));
+			side_flg_[dir.side_index] = 0;
+			// 再帰を一段階深くする
+			dfs_cg_a2();
+			// 戻す
+			side_flg_[dir.side_index] = 1;
+			result_.back_side();
+			now_position_ = result_.now_position();
+			++available_side_count_[dir.next_position];
+			result_.set_score(old_score);
+		}
+		++available_side_count_[now_position_];
+	}
+	void dfs_a() noexcept {
 		// ゴール地点なら、とりあえずスコア判定を行う
 		if (now_position_ == problem_.get_goal()) {
 			if (result_.get_score() > best_result_.get_score()) {
@@ -774,7 +828,33 @@ class Solver {
 			result_.set_score(problem_.get_operation(dir.side_index).calc(result_.get_score()));
 			side_flg_[dir.side_index] = 0;
 			// 再帰を一段階深くする
-			dfs();
+			dfs_b();
+			// 戻す
+			side_flg_[dir.side_index] = 1;
+			result_.back_side();
+			now_position_ = result_.now_position();
+			++available_side_count_[dir.next_position];
+			++available_side_count_[now_position_];
+			result_.set_score(old_score);
+		}
+	}
+	void dfs_b() noexcept {
+		// ネストを深くする
+		for (const auto &dir : problem_.get_dir_list(now_position_)) {
+			if (!side_flg_[dir.side_index])
+				continue;
+			if (available_side_count_[dir.next_position] <= 1)
+				continue;
+			// 進める
+			const int old_score = result_.get_score();
+			--available_side_count_[now_position_];
+			--available_side_count_[dir.next_position];
+			result_.move_side(dir.next_position);
+			now_position_ = dir.next_position;
+			result_.set_score(problem_.get_operation(dir.side_index).calc(result_.get_score()));
+			side_flg_[dir.side_index] = 0;
+			// 再帰を一段階深くする
+			dfs_a();
 			// 戻す
 			side_flg_[dir.side_index] = 1;
 			result_.back_side();
@@ -811,25 +891,75 @@ int main(int argc, char* argv[]) {
 		//
 		if (setting.solver_flg()) {
 			// 解を探索する
-			Solver solver;
 			Result result;
-			for (size_t i = 0; i < 20; ++i) {
+			vector<long long> time1, time2;
+			Solver solver, solver2;
+			const size_t solve_count = 20;
+			cout << "第1群：" << endl;
+			for (size_t i = 0; i < solve_count; ++i) {
 				StopWatch sw;
 				sw.Start();
 				result = solver.solve(problem, setting.split_count());
 				sw.Stop();
-				cout << sw.ElapsedMilliseconds() << endl;
+				cout << sw.ElapsedMilliseconds() << " ";
+				if ((i + 1) % 5 == 0)
+					cout << endl;
+				time1.push_back(sw.ElapsedMilliseconds());
 			}
 			cout << endl;
-			Solver solver2;
-			for (size_t i = 0; i < 20; ++i) {
+			cout << "第2群：" << endl;
+			for (size_t i = 0; i < solve_count; ++i) {
 				StopWatch sw;
 				sw.Start();
 				result = solver2.solve2(problem, setting.split_count());
 				sw.Stop();
-				cout << sw.ElapsedMilliseconds() << endl;
+				cout << sw.ElapsedMilliseconds() << " ";
+				if ((i + 1) % 5 == 0)
+					cout << endl;
+				time2.push_back(sw.ElapsedMilliseconds());
 			}
-			cout << result.get_score() << "," << result << endl;
+			cout << endl;
+			cout << "探索結果：" << endl;
+			cout << result.get_score() << "," << result << endl << endl;
+			// 検定を実施
+			const double ave1 = 1.0 * std::accumulate(time1.begin(), time1.end(), 0ll) / time1.size();
+			const double ave2 = 1.0 * std::accumulate(time2.begin(), time2.end(), 0ll) / time2.size();
+			const double var1 = std::accumulate(time1.begin(), time1.end(), 0.0,
+				[ave1](double init, long long x) {
+					const auto temp = x - ave1;
+					return init + temp * temp;
+				}
+			) / (time1.size() - 1);
+			const double var2 = std::accumulate(time2.begin(), time2.end(), 0.0,
+				[ave2](double init, long long x) {
+				const auto temp = x - ave2;
+				return init + temp * temp;
+			}
+			) / (time2.size() - 1);
+			cout << "第1群の平均：" << ave1 << "±" << std::sqrt(var1 / time1.size()) << endl;
+			cout << "第2群の平均：" << ave2 << "±" << std::sqrt(var2 / time2.size()) << endl;
+			const double temp = var1 / time1.size() + var2 / time2.size();
+			const double t = std::abs(ave1 - ave2) / std::sqrt(temp);
+			cout << "統計量t：" << t << endl;
+			const double v = temp * temp / (
+				var1 * var1 / time1.size() / time1.size() / (time1.size() - 1)
+				+ var2 * var2 / time2.size() / time2.size() / (time2.size() - 1));
+			cout << "自由度v：" << v << endl;
+			const double t_dist[] = {
+				12.706,4.3027,3.1825,2.7764,2.5706,2.4469,
+				2.3646,2.306,2.2622,2.2281,2.201,2.1788,
+				2.1604,2.1448,2.1315,2.1199,2.1098,2.1009,
+				2.093,2.086,2.0796,2.0739,2.0687,2.0639,
+				2.0595,2.0555,2.0518,2.0484,2.0452,2.0423,
+				2.040,2.037,2.035,2.032,2.030,
+				2.028,2.026,2.024,2.023,2.021};
+			const size_t index = size_t(v + 0.5) - 1;
+			if (t < t_dist[index]) {
+				cout << "検定結果：2群の平均に差があるとは言えない" << endl;
+			}
+			else {
+				cout << "検定結果：2群の平均に差があるとは言える" << endl;
+			}
 			// 結果を表示する
 			//cout << "【結果】" << endl;
 			//cout << "最高得点：" << result.get_score() << endl;
