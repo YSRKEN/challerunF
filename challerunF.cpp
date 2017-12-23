@@ -406,6 +406,9 @@ public:
 	size_t get_height() const noexcept {
 		return height_;
 	}
+	auto &get_pre_root() const noexcept {
+		return pre_root_;
+	}
 	const vector<Direction>& get_dir_list(const size_t point) const noexcept {
 		return field_[point];
 	}
@@ -681,7 +684,14 @@ class Solver {
 				dfs_a(result_.now_position());
 			}
 		}
-		return std::pair<Result, int>(best_result_, best_score_);
+		Result best_result2(problem.side_size(), problem.get_pre_root()[0]);
+		for (size_t i = 1; i < problem.get_pre_root().size() - 1; ++i) {
+			best_result2.move_side(problem.get_pre_root()[i]);
+		}
+		for (size_t i = 0; i < best_result_.get_root().size(); ++i) {
+			best_result2.move_side(best_result_.get_root()[i]);
+		}
+		return std::pair<Result, int>(best_result2, best_score_);
 	}
 	std::pair<Result, int> dfs2(const Problem &problem, const bool corner_goal_flg) {
 		problem_ = problem;
@@ -969,6 +979,35 @@ public:
 		g_max_threads = threads;
 		return dfs2(problem, problem.corner_goal_flg());
 	}
+	std::pair<Result, int> solve3(const Problem &problem, unsigned int threads) {
+		problem_ = problem;
+		// 探索の起点となる解・最適解
+		best_result_ = result_ = Result(problem.side_size(), problem.get_start());
+		score_ = problem.get_pre_score();
+		best_score_ = -9999;
+		// ある辺を踏破したか？
+		side_flg_ = problem.get_side_flg();
+		// ある地点の周りにある、まだ通れる辺の数
+		// (ただしゴール地点だけ+1しておく)
+		available_side_count_ = problem.get_available_side_count();
+		// 始点
+		// 探索開始
+		const auto problem_list = split(problem, threads * 100);
+		vector<std::pair<Result, int>> result_list(problem_list.size());
+		#pragma omp parallel for schedule(dynamic) num_threads(threads)
+		for (int i = 0; i < problem_list.size(); ++i) {
+			Solver new_solver;
+			result_list[i] = new_solver.solve(problem_list[i], 1);
+		}
+		best_score_ = -9999;
+		for (size_t di = 0; di < result_list.size(); ++di) {
+			if (best_score_ < result_list[di].second) {
+				best_result_ = result_list[di].first;
+				best_score_ = result_list[di].second;
+			}
+		}
+		return std::pair<Result, int>(best_result_, best_score_);
+	}
 	// 問題を分割保存する
 	vector<Problem> split(const Problem &problem) const {
 		vector<Problem> splited_problem;
@@ -1024,7 +1063,7 @@ int main(int argc, char* argv[]) {
 			Solver solver;
 			StopWatch sw;
 			sw.Start();
-			std::pair<Result, int> result = solver.solve2(problem, setting.split_count());
+			std::pair<Result, int> result = solver.solve3(problem, setting.split_count());
 			sw.Stop();
 			cout << problem.get_width() << "," << problem.get_height() << "," << result.second << "," << result.first << "," << (1.0 * sw.ElapsedMilliseconds() / 1000) << endl;
 			/*vector<long long> time1, time2;
