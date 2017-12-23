@@ -337,6 +337,11 @@ public:
 				side_flg[dir.side_index] = 1;
 			}
 		}
+		for (size_t i = 0; i < pre_root_.size() - 1; ++i) {
+			const auto index = get_index(pre_root_[i], pre_root_[i + 1]);
+			if(index >= 0)
+				side_flg[field_[pre_root_[i]][index].side_index] = 0;
+		}
 		return side_flg;
 	}
 	// ある地点の周りにある、まだ通れる辺の数の初期値を返す
@@ -360,12 +365,44 @@ public:
 		int x_flg = std::abs(sx - gx) % 2, y_flg = std::abs(sy - gy) % 2;
 		return ((x_flg + y_flg) % 2 == 1);
 	}
+	// 移動操作
+	void move(const size_t next_position) {
+		pre_root_.push_back(next_position);
+		pre_score_ = side_[field_[start_][get_index(start_, next_position)].side_index].calc(pre_score_);
+		start_ = next_position;
+	}
+	// 保存用に書き出す
+	string to_file() const {
+		std::ostringstream oss;
+		oss << width_ << " " << height_ << endl;
+		size_t p = 0;
+		for (size_t h = 0; h < height_ * 2 - 1; ++h) {
+			for (size_t w = 0; w < (h % 2 == 0 ? width_ - 1 : width_); ++w) {
+				if (w != 0) oss << " ";
+				oss << side_[p].str();
+				++p;
+			}
+			oss << endl;
+		}
+		oss << pre_root_.size() << " ";
+		for (size_t i = 0; i < pre_root_.size(); ++i) {
+			oss << pre_root_[i] << " ";
+		}
+		oss << goal_ << endl;
+		return oss.str();
+	}
 	// getter
 	size_t get_start() const noexcept {
 		return start_;
 	}
 	size_t get_goal() const noexcept {
 		return goal_;
+	}
+	size_t get_width() const noexcept {
+		return width_;
+	}
+	size_t get_height() const noexcept {
+		return height_;
 	}
 	const vector<Direction>& get_dir_list(const size_t point) const noexcept {
 		return field_[point];
@@ -851,8 +888,43 @@ public:
 		return dfs2(problem, problem.corner_goal_flg());
 	}
 	// 問題を分割保存する
-	void split(const Problem &problem, unsigned int splits) const {
+	vector<Problem> split(const Problem &problem) const {
+		vector<Problem> splited_problem;
+		const auto side_flg = problem.get_side_flg();
+		for (const auto &dir : problem.get_dir_list(problem.get_start())) {
+			if (!side_flg[dir.side_index])
+				continue;
+			Problem next_problem = problem;
+			next_problem.move(dir.next_position);
+			splited_problem.push_back(next_problem);
+		}
+		return splited_problem;
+	}
+	vector<Problem> split(const Problem &problem, unsigned int splits) const {
+		vector<Problem> splited_problem;
+		splited_problem.push_back(problem);
+		// ・splited_problemの各問題について、1段階分割した後にsplited_problem2に追記する
+		// ・splited_problemをsplited_problem2で上書きする
+		// ・上1つを続けると、nステップ目にsplited_problemの要素数がsplits以上になるのでループを抜ける
+		do {
+			vector<Problem> splited_problem2;
+			for (size_t i = 0; i < splited_problem.size(); ++i) {
+				const auto temp = split(splited_problem[i]);
+				for (const auto &q : temp) {
+					splited_problem2.push_back(q);
+				}
+				if (splited_problem2.size() + splited_problem.size() - i - 1 >= splits) {
+					for (size_t j = i + 1; j < splited_problem.size(); ++j) {
+						splited_problem2.push_back(splited_problem[j]);
+					}
+					break;
+				}
+			}
+			splited_problem.clear();
+			splited_problem = splited_problem2;
 
+		}while (splited_problem.size() < splits);
+		return splited_problem;
 	}
 };
 
@@ -867,10 +939,15 @@ int main(int argc, char* argv[]) {
 		//
 		if (setting.solver_flg()) {
 			// 解を探索する
-			std::pair<Result, int> result;
-			vector<long long> time1, time2;
+			Solver solver;
+			StopWatch sw;
+			sw.Start();
+			std::pair<Result, int> result = solver.solve(problem, setting.split_count());
+			sw.Stop();
+			cout << problem.get_width() << "," << problem.get_height() << "," << result.second << "," << result.first << "," << (1.0 * sw.ElapsedMilliseconds() / 1000) << endl;
+			/*vector<long long> time1, time2;
 			Solver solver, solver2;
-			const size_t solve_count = 1;
+			const size_t solve_count = 20;
 			cout << "第1群：" << endl;
 			for (size_t i = 0; i < solve_count; ++i) {
 				StopWatch sw;
@@ -900,53 +977,72 @@ int main(int argc, char* argv[]) {
 			cout << "探索結果2：" << endl;
 			cout << result.second << "," << result.first << endl << endl;
 			// 検定を実施
-			/*const double ave1 = 1.0 * std::accumulate(time1.begin(), time1.end(), 0ll) / time1.size();
-			const double ave2 = 1.0 * std::accumulate(time2.begin(), time2.end(), 0ll) / time2.size();
-			const double var1 = std::accumulate(time1.begin(), time1.end(), 0.0,
-				[ave1](double init, long long x) {
+			if (solve_count > 1) {
+				const double ave1 = 1.0 * std::accumulate(time1.begin(), time1.end(), 0ll) / time1.size();
+				const double ave2 = 1.0 * std::accumulate(time2.begin(), time2.end(), 0ll) / time2.size();
+				const double var1 = std::accumulate(time1.begin(), time1.end(), 0.0,
+					[ave1](double init, long long x) {
 					const auto temp = x - ave1;
 					return init + temp * temp;
 				}
-			) / (time1.size() - 1);
-			const double var2 = std::accumulate(time2.begin(), time2.end(), 0.0,
-				[ave2](double init, long long x) {
-				const auto temp = x - ave2;
-				return init + temp * temp;
-			}
-			) / (time2.size() - 1);
-			cout << "第1群の平均：" << ave1 << "±" << std::sqrt(var1 / time1.size()) << endl;
-			cout << "第2群の平均：" << ave2 << "±" << std::sqrt(var2 / time2.size()) << endl;
-			const double temp = var1 / time1.size() + var2 / time2.size();
-			const double t = std::abs(ave1 - ave2) / std::sqrt(temp);
-			cout << "統計量t：" << t << endl;
-			const double v = temp * temp / (
-				var1 * var1 / time1.size() / time1.size() / (time1.size() - 1)
-				+ var2 * var2 / time2.size() / time2.size() / (time2.size() - 1));
-			cout << "自由度v：" << v << endl;
-			const double t_dist[] = {
-				12.706,4.3027,3.1825,2.7764,2.5706,2.4469,
-				2.3646,2.306,2.2622,2.2281,2.201,2.1788,
-				2.1604,2.1448,2.1315,2.1199,2.1098,2.1009,
-				2.093,2.086,2.0796,2.0739,2.0687,2.0639,
-				2.0595,2.0555,2.0518,2.0484,2.0452,2.0423,
-				2.040,2.037,2.035,2.032,2.030,
-				2.028,2.026,2.024,2.023,2.021};
-			const size_t index = size_t(v + 0.5) - 1;
-			if (t < t_dist[index]) {
-				cout << "検定結果：2群の平均に差があるとは言えない" << endl;
-			}
-			else {
-				cout << "検定結果：2群の平均に差があるとは言える" << endl;
-			}
+				) / (time1.size() - 1);
+				const double var2 = std::accumulate(time2.begin(), time2.end(), 0.0,
+					[ave2](double init, long long x) {
+					const auto temp = x - ave2;
+					return init + temp * temp;
+				}
+				) / (time2.size() - 1);
+				cout << "第1群の平均：" << ave1 << "±" << std::sqrt(var1 / time1.size()) << endl;
+				cout << "第2群の平均：" << ave2 << "±" << std::sqrt(var2 / time2.size()) << endl;
+				const double temp = var1 / time1.size() + var2 / time2.size();
+				const double t = std::abs(ave1 - ave2) / std::sqrt(temp);
+				cout << "統計量t：" << t << endl;
+				const double v = temp * temp / (
+					var1 * var1 / time1.size() / time1.size() / (time1.size() - 1)
+					+ var2 * var2 / time2.size() / time2.size() / (time2.size() - 1));
+				cout << "自由度v：" << v << endl;
+				const double t_dist[] = {
+					12.706,4.3027,3.1825,2.7764,2.5706,2.4469,
+					2.3646,2.306,2.2622,2.2281,2.201,2.1788,
+					2.1604,2.1448,2.1315,2.1199,2.1098,2.1009,
+					2.093,2.086,2.0796,2.0739,2.0687,2.0639,
+					2.0595,2.0555,2.0518,2.0484,2.0452,2.0423,
+					2.040,2.037,2.035,2.032,2.030,
+					2.028,2.026,2.024,2.023,2.021 };
+				const size_t index = size_t(v + 0.5) - 1;
+				if (t < t_dist[index]) {
+					cout << "検定結果：2群の平均に差があるとは言えない" << endl;
+				}
+				else {
+					cout << "検定結果：2群の平均に差があるとは言える" << endl;
+				}
+			}*/
 			// 結果を表示する
 			//cout << "【結果】" << endl;
 			//cout << "最高得点：" << result.get_score() << endl;
 			//cout << "最高経路：" << result << endl;
 			//cout << "計算時間：" << sw.ElapsedMilliseconds() << "[ms]" << endl;
-			return 0;*/
+			return 0;
 		}
 		else {
 			// 問題を分割保存する
+			// まず分割する
+			Solver solver;
+			const auto splited_problem = solver.split(problem, setting.split_count());
+			// ファイル保存のための準備をする
+			string file_name_without_ext;
+			string::size_type pos = setting.file_name().find_last_of(".");
+			if (pos == string::npos) {
+				file_name_without_ext = setting.file_name();
+			}
+			else {
+				file_name_without_ext = setting.file_name().substr(0, pos);
+			}
+			// 保存処理
+			for (size_t i = 0; i < splited_problem.size(); ++i) {
+				std::ofstream ofs(file_name_without_ext + "_" + std::to_string(i + 1) + ".txt");
+				ofs << splited_problem[i].to_file();
+			}
 		}
 	}
 	catch (const char *s) {
