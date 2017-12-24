@@ -140,6 +140,16 @@ struct Operation {
 	inline int calc(const int x) const noexcept {
 		return x * mul_num + add_num;
 	}
+	// 2つのOperationを合体させる(非可換)
+	// 「Operation1 + Operation2」を、「Operation1の後にOperation2を適用する」といった意味とする
+	const Operation operator + (const Operation& b) const {
+		// Operation1をM1*X+A1、Operation2をM2*X+A2とする。
+		// Operation1→Operation2の順で適用すると、
+		// M2*(M1*X+A1)+A2=M1*M2*X+A1*M2+A2 となる
+		const int mul_num2 = this->mul_num * b.mul_num;
+		const int add_num2 = this->add_num * b.mul_num + b.add_num;
+		return Operation{ mul_num2, add_num2 };
+	}
 };
 // 方向データ
 struct Direction {
@@ -150,6 +160,14 @@ struct Direction {
 	// 辺の情報
 	Operation operation;
 };
+struct Direction2 {
+	// 行き先
+	size_t next_position1, next_position2;
+	// 辺の番号
+	size_t side_index1, side_index2;
+	// 辺の情報
+	Operation operation;
+};
 
 // 問題データ
 class Problem {
@@ -157,6 +175,8 @@ class Problem {
 	// field_[マス目][各方向] = 方向データ
 	// [各方向]部分を可変長(vector)にしているのがポイント
 	vector<vector<Direction>> field_;
+	//頂点データ(2歩編)
+	vector<vector<Direction2>> field2_;
 	// 辺データ
 	vector<Operation> side_;
 	// 盤面サイズ
@@ -319,6 +339,24 @@ public:
 					}
 				} while (erease_flg);
 			}
+			// field2_を作成する
+			field2_.resize(width_ * height_, vector<Direction2>());
+			for (size_t p = 0; p < width_ * height_; ++p) {
+				for (const auto &next1 : field_[p]) {
+					for (const auto &next2 : field_[next1.next_position]) {
+						if (next2.next_position == p)
+							continue;
+						const auto &next_position1 = next1.next_position;
+						const auto &next_position2 = next2.next_position;
+						const auto &side_index1 = next1.side_index;
+						const auto &side_index2 = next2.side_index;
+						const Operation operation = next1.operation + next2.operation;
+						Direction2 dir2 = { next_position1, next_position2 , side_index1, side_index2, operation };
+						field2_[p].push_back(dir2);
+					}
+				}
+			}
+			return;
 		}
 		catch (const char *s) {
 			throw s;
@@ -411,6 +449,9 @@ public:
 	}
 	const vector<Direction>& get_dir_list(const size_t point) const noexcept {
 		return field_[point];
+	}
+	const vector<Direction2>& get_dir_list2(const size_t point) const noexcept {
+		return field2_[point];
 	}
 	const Operation& get_operation(const size_t side_index) const noexcept {
 		return side_[side_index];
@@ -622,6 +663,9 @@ public:
 	void back_side() noexcept {
 		--ptr_;
 	}
+	void back_side2() noexcept {
+		ptr_ -= 2;
+	}
 	// 現在の位置
 	size_t now_position() const noexcept {
 		return root_[ptr_];
@@ -726,6 +770,46 @@ class Solver {
 		}
 		return std::pair<Result, int>(best_result_, best_score_);
 	}
+	std::pair<Result, int> dfs3(const Problem &problem, const bool corner_goal_flg) {
+		problem_ = problem;
+		// 探索の起点となる解・最適解
+		best_result_ = result_ = Result(problem.side_size(), problem.get_start());
+		score_ = problem.get_pre_score();
+		best_score_ = -9999;
+		// ある辺を踏破したか？
+		side_flg_ = problem.get_side_flg();
+		// ある地点の周りにある、まだ通れる辺の数
+		// (ただしゴール地点だけ+1しておく)
+		available_side_count_ = problem.get_available_side_count();
+		// 始点
+		// 探索開始
+		if (corner_goal_flg) {
+			// 始点と終点の奇偶を調べる
+			if (problem.is_odd()) {
+				dfs_cg_b3(result_.now_position());
+			}
+			else {
+				dfs_cg_a3(result_.now_position());
+			}
+		}
+		else {
+			// 始点と終点の奇偶を調べる
+			if (problem.is_odd()) {
+				dfs_b(result_.now_position());
+			}
+			else {
+				dfs_a(result_.now_position());
+			}
+		}
+		Result best_result2(problem.side_size(), problem.get_pre_root()[0]);
+		for (size_t i = 1; i < problem.get_pre_root().size() - 1; ++i) {
+			best_result2.move_side(problem.get_pre_root()[i]);
+		}
+		for (size_t i = 0; i < best_result_.get_root().size(); ++i) {
+			best_result2.move_side(best_result_.get_root()[i]);
+		}
+		return std::pair<Result, int>(best_result2, best_score_);
+	}
 	void dfs_cg_a(const size_t now_position) noexcept {
 		// ゴール地点なら、とりあえずスコア判定を行う
 		if (now_position == problem_.get_goal()) {
@@ -775,6 +859,66 @@ class Solver {
 			side_flg_[dir.side_index] = 0;
 			// 再帰を一段階深くする
 			dfs_cg_a(dir.next_position);
+			// 戻す
+			side_flg_[dir.side_index] = 1;
+			result_.back_side();
+			++available_side_count_[dir.next_position];
+			score_ = old_score;
+		}
+		++available_side_count_[now_position];
+	}
+	void dfs_cg_a3(const size_t now_position) noexcept {
+		// ゴール地点なら、とりあえずスコア判定を行う
+		if (now_position == problem_.get_goal()) {
+			if (score_ > best_score_) {
+				best_result_ = result_;
+				best_score_ = score_;
+				//cout << best_result_.get_score() << "," << best_result_ << endl;
+			}
+			return;
+		}
+		// ネストを深くする
+		--available_side_count_[now_position];
+		for (const auto &dir : problem_.get_dir_list2(now_position)) {
+			if (!side_flg_[dir.side_index1] || !side_flg_[dir.side_index2])
+				continue;
+			if (available_side_count_[dir.next_position2] <= 1)
+				continue;
+			// 進める
+			const int old_score = score_;
+			--available_side_count_[dir.next_position2];
+			result_.move_side(dir.next_position1);
+			result_.move_side(dir.next_position2);
+			score_ = dir.operation.calc(score_);
+			side_flg_[dir.side_index1] = 0;
+			side_flg_[dir.side_index2] = 0;
+			// 再帰を一段階深くする
+			dfs_cg_a3(dir.next_position2);
+			// 戻す
+			side_flg_[dir.side_index1] = 1;
+			side_flg_[dir.side_index2] = 1;
+			result_.back_side2();
+			++available_side_count_[dir.next_position2];
+			score_ = old_score;
+		}
+		++available_side_count_[now_position];
+	}
+	void dfs_cg_b3(const size_t now_position) noexcept {
+		// ネストを深くする
+		--available_side_count_[now_position];
+		for (const auto &dir : problem_.get_dir_list(now_position)) {
+			if (!side_flg_[dir.side_index])
+				continue;
+			if (available_side_count_[dir.next_position] <= 1)
+				continue;
+			// 進める
+			const int old_score = score_;
+			--available_side_count_[dir.next_position];
+			result_.move_side(dir.next_position);
+			score_ = problem_.get_operation(dir.side_index).calc(score_);
+			side_flg_[dir.side_index] = 0;
+			// 再帰を一段階深くする
+			dfs_cg_a3(dir.next_position);
 			// 戻す
 			side_flg_[dir.side_index] = 1;
 			result_.back_side();
@@ -1008,6 +1152,35 @@ public:
 		}
 		return std::pair<Result, int>(best_result_, best_score_);
 	}
+	std::pair<Result, int> solve4(const Problem &problem, unsigned int threads) {
+		problem_ = problem;
+		// 探索の起点となる解・最適解
+		best_result_ = result_ = Result(problem.side_size(), problem.get_start());
+		score_ = problem.get_pre_score();
+		best_score_ = -9999;
+		// ある辺を踏破したか？
+		side_flg_ = problem.get_side_flg();
+		// ある地点の周りにある、まだ通れる辺の数
+		// (ただしゴール地点だけ+1しておく)
+		available_side_count_ = problem.get_available_side_count();
+		// 始点
+		// 探索開始
+		const auto problem_list = split(problem, threads * 100);
+		vector<std::pair<Result, int>> result_list(problem_list.size());
+#pragma omp parallel for schedule(dynamic) num_threads(threads)
+		for (int i = 0; i < problem_list.size(); ++i) {
+			Solver new_solver;
+			result_list[i] = new_solver.dfs3(problem_list[i], problem_list[i].corner_goal_flg());
+		}
+		best_score_ = -9999;
+		for (size_t di = 0; di < result_list.size(); ++di) {
+			if (best_score_ < result_list[di].second) {
+				best_result_ = result_list[di].first;
+				best_score_ = result_list[di].second;
+			}
+		}
+		return std::pair<Result, int>(best_result_, best_score_);
+	}
 	// 問題を分割保存する
 	vector<Problem> split(const Problem &problem) const {
 		vector<Problem> splited_problem;
@@ -1061,9 +1234,14 @@ int main(int argc, char* argv[]) {
 		if (setting.solver_flg()) {
 			// 解を探索する
 			Solver solver;
+			std::pair<Result, int> result;
 			StopWatch sw;
 			sw.Start();
-			std::pair<Result, int> result = solver.solve3(problem, setting.split_count());
+			result = solver.solve3(problem, setting.split_count());
+			sw.Stop();
+			cout << problem.get_width() << "," << problem.get_height() << "," << result.second << "," << result.first << "," << (1.0 * sw.ElapsedMilliseconds() / 1000) << endl;
+			sw.Start();
+			result = solver.solve4(problem, setting.split_count());
 			sw.Stop();
 			cout << problem.get_width() << "," << problem.get_height() << "," << result.second << "," << result.first << "," << (1.0 * sw.ElapsedMilliseconds() / 1000) << endl;
 			/*vector<long long> time1, time2;
