@@ -8,8 +8,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
-#include <mutex>
-#include <future>
+#include "ThreadPool.h"
 
 using std::cout;
 using std::endl;
@@ -684,7 +683,6 @@ public:
 // ソルバー
 size_t g_threads = 1;
 size_t g_max_threads;
-std::mutex g_mtx;
 class Solver {
 	Problem problem_;
 	Result result_, best_result_;
@@ -870,11 +868,19 @@ public:
 		// 始点
 		// 探索開始
 		const auto problem_list = split(problem, threads * 100);
-		vector<std::pair<Result, int>> result_list(problem_list.size());
-		#pragma omp parallel for schedule(dynamic) num_threads(threads)
-		for (int i = 0; i < problem_list.size(); ++i) {
-			Solver new_solver;
-			result_list[i] = new_solver.dfs(problem_list[i], problem_list[i].corner_goal_flg());
+		vector<std::future<std::pair<Result, int>>> result_list_future;
+		ThreadPool pool(threads);
+		for (const auto &problem_temp : problem_list) {
+			result_list_future.emplace_back(
+				pool.enqueue([&] {
+					Solver new_solver;
+					return new_solver.dfs(problem_temp, problem_temp.corner_goal_flg());
+				})
+			);
+		}
+		vector<std::pair<Result, int>> result_list;
+		for (auto && result : result_list_future) {
+			result_list.emplace_back(result.get());
 		}
 		best_score_ = -9999;
 		for (size_t di = 0; di < result_list.size(); ++di) {
