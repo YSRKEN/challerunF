@@ -114,6 +114,7 @@ struct Operation {
 	int mul_num = 1;
 	// 足し算する定数
 	int add_num = 0;
+	int add_num_x = 0;	//add_numが1以上ならadd_num、0以下なら0とする
 	// 文字列化
 	string str() const noexcept {
 		if (add_num == 0) {
@@ -143,7 +144,7 @@ struct Operation {
 		// M2*(M1*X+A1)+A2=M1*M2*X+A1*M2+A2 となる
 		const int mul_num2 = this->mul_num * b.mul_num;
 		const int add_num2 = this->add_num * b.mul_num + b.add_num;
-		return Operation{ mul_num2, add_num2 };
+		return Operation{ mul_num2, add_num2, (add_num2 > 0 ? add_num2 : 0) };
 	}
 };
 // 方向データ
@@ -241,9 +242,11 @@ public:
 					Operation ope;
 					if (operation_str == "+") {
 						ope.add_num = number;
+						ope.add_num_x = std::max(0, number);
 					}
 					else if (operation_str == "-") {
 						ope.add_num = -number;
+						ope.add_num_x = std::max(0, -number);
 					}
 					else if (operation_str == "*") {
 						ope.mul_num = number;
@@ -425,6 +428,24 @@ public:
 		}
 		oss << goal_ << endl;
 		return oss.str();
+	}
+	// 獲得可能な得点の上限を算出するための数値
+	void get_muladd_value(const vector<char> &side_flg, int &max_mul_value, int &max_add_value) const noexcept {
+		// 初期値
+		max_mul_value = 1; max_add_value = 0;
+		// 各辺についてチェックする
+		for (size_t i = 0; i < side_.size(); ++i) {
+			if (!side_flg[i])
+				continue;
+			if (side_[i].add_num != 0) {
+				// 加減算
+				max_add_value += std::max(0, side_[i].add_num);
+			}
+			else if(side_[i].mul_num != 0){
+				// 乗算
+				max_mul_value *= std::max(1, side_[i].mul_num);
+			}
+		}
 	}
 	// getter
 	size_t get_start() const noexcept {
@@ -689,6 +710,7 @@ class Solver {
 	int score_, best_score_;
 	vector<char> side_flg_;
 	vector<char> available_side_count_;
+	int max_mul_value_, max_add_value_;
 
 	// 普通の深さ優先探索を行う
 	std::pair<Result, int> dfs(const Problem &problem, const bool corner_goal_flg) {
@@ -702,7 +724,8 @@ class Solver {
 		// ある地点の周りにある、まだ通れる辺の数
 		// (ただしゴール地点だけ+1しておく)
 		available_side_count_ = problem.get_available_side_count();
-		// 始点
+		// 獲得可能な得点の上限を算出するための数値
+		problem.get_muladd_value(side_flg_, max_mul_value_, max_add_value_);
 		// 探索開始
 		if (corner_goal_flg) {
 			// 始点と終点の奇偶を調べる
@@ -741,6 +764,9 @@ class Solver {
 			}
 			return;
 		}
+		// 見込みスコアが現時点のベストスコアに劣っている場合は戻る
+		if ((score_ + max_add_value_) * max_mul_value_ < best_score_)
+			return;
 		// ネストを深くする
 		--available_side_count_[now_position];
 		for (const auto &dir : problem_.get_dir_list2(now_position)) {
@@ -756,11 +782,19 @@ class Solver {
 			score_ = dir.operation.calc(score_);
 			side_flg_[dir.side_index1] = 0;
 			side_flg_[dir.side_index2] = 0;
+			max_mul_value_ /= problem_.get_operation(dir.side_index1).mul_num;
+			max_mul_value_ /= problem_.get_operation(dir.side_index2).mul_num;
+			max_add_value_ -= problem_.get_operation(dir.side_index1).add_num_x;
+			max_add_value_ -= problem_.get_operation(dir.side_index2).add_num_x;
 			// 再帰を一段階深くする
 			dfs_cg_a(dir.next_position2);
 			// 戻す
 			side_flg_[dir.side_index1] = 1;
 			side_flg_[dir.side_index2] = 1;
+			max_mul_value_ *= problem_.get_operation(dir.side_index1).mul_num;
+			max_mul_value_ *= problem_.get_operation(dir.side_index2).mul_num;
+			max_add_value_ += problem_.get_operation(dir.side_index1).add_num_x;
+			max_add_value_ += problem_.get_operation(dir.side_index2).add_num_x;
 			result_.back_side2();
 			++available_side_count_[dir.next_position2];
 			score_ = old_score;
@@ -768,6 +802,9 @@ class Solver {
 		++available_side_count_[now_position];
 	}
 	void dfs_cg_b(const size_t now_position) noexcept {
+		// 見込みスコアが現時点のベストスコアに劣っている場合は戻る
+		if ((score_ + max_add_value_) * max_mul_value_ < best_score_)
+			return;
 		// ネストを深くする
 		--available_side_count_[now_position];
 		for (const auto &dir : problem_.get_dir_list(now_position)) {
@@ -781,10 +818,14 @@ class Solver {
 			result_.move_side(dir.next_position);
 			score_ = problem_.get_operation(dir.side_index).calc(score_);
 			side_flg_[dir.side_index] = 0;
+			max_mul_value_ /= problem_.get_operation(dir.side_index).mul_num;
+			max_add_value_ -= problem_.get_operation(dir.side_index).add_num_x;
 			// 再帰を一段階深くする
 			dfs_cg_a(dir.next_position);
 			// 戻す
 			side_flg_[dir.side_index] = 1;
+			max_mul_value_ *= problem_.get_operation(dir.side_index).mul_num;
+			max_add_value_ += problem_.get_operation(dir.side_index).add_num_x;
 			result_.back_side();
 			++available_side_count_[dir.next_position];
 			score_ = old_score;
