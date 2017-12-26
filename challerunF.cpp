@@ -802,6 +802,14 @@ class Solver {
 		++available_side_count_[now_position];
 	}
 	void dfs_cg_b(const size_t now_position) noexcept {
+		// ゴール地点なら、とりあえずスコア判定を行う
+		if (now_position == problem_.get_goal()) {
+			if (score_ > best_score_) {
+				best_result_ = result_;
+				best_score_ = score_;
+			}
+			return;
+		}
 		// 見込みスコアが現時点のベストスコアに劣っている場合は戻る
 		if ((score_ + max_add_value_) * max_mul_value_ < best_score_)
 			return;
@@ -879,6 +887,14 @@ class Solver {
 		++available_side_count_[now_position];
 	}
 	void dfs_b(const size_t now_position) noexcept {
+		// ゴール地点なら、とりあえずスコア判定を行う
+		if (now_position == problem_.get_goal()) {
+			if (score_ > best_score_) {
+				best_result_ = result_;
+				best_score_ = score_;
+			}
+			return;
+		}
 		// 見込みスコアが現時点のベストスコアに劣っている場合は戻る
 		if ((score_ + max_add_value_) * max_mul_value_ < best_score_)
 			return;
@@ -914,6 +930,9 @@ public:
 	Solver() {}
 	// 解を探索する
 	std::pair<Result, int> solve(const Problem &problem, unsigned int threads) {
+		if (threads == 1) {
+			return dfs(problem, problem.corner_goal_flg());
+		}
 		problem_ = problem;
 		// 探索の起点となる解・最適解
 		best_result_ = result_ = Result(problem.side_size(), problem.get_start());
