@@ -8,6 +8,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <mutex>
 #include "ThreadPool.h"
 
 using std::cout;
@@ -704,6 +705,8 @@ public:
 // ソルバー
 size_t g_threads = 1;
 size_t g_max_threads;
+std::mutex mtx;
+int g_best_score = -9999;
 class Solver {
 	Problem problem_;
 	Result result_, best_result_;
@@ -760,12 +763,15 @@ class Solver {
 			if (score_ > best_score_) {
 				best_result_ = result_;
 				best_score_ = score_;
+				mtx.lock();
+				g_best_score = best_score_;
+				mtx.unlock();
 				//cout << best_result_.get_score() << "," << best_result_ << endl;
 			}
 			return;
 		}
 		// 見込みスコアが現時点のベストスコアに劣っている場合は戻る
-		if ((score_ + max_add_value_) * max_mul_value_ < best_score_)
+		if ((score_ + max_add_value_) * max_mul_value_ < g_best_score)
 			return;
 		// ネストを深くする
 		--available_side_count_[now_position];
@@ -807,11 +813,14 @@ class Solver {
 			if (score_ > best_score_) {
 				best_result_ = result_;
 				best_score_ = score_;
+				mtx.lock();
+				g_best_score = best_score_;
+				mtx.unlock();
 			}
 			return;
 		}
 		// 見込みスコアが現時点のベストスコアに劣っている場合は戻る
-		if ((score_ + max_add_value_) * max_mul_value_ < best_score_)
+		if ((score_ + max_add_value_) * max_mul_value_ < g_best_score)
 			return;
 		// ネストを深くする
 		--available_side_count_[now_position];
@@ -846,11 +855,14 @@ class Solver {
 			if (score_ > best_score_) {
 				best_result_ = result_;
 				best_score_ = score_;
+				mtx.lock();
+				g_best_score = best_score_;
+				mtx.unlock();
 				//cout << best_result_.get_score() << "," << best_result_ << endl;
 			}
 		}
 		// 見込みスコアが現時点のベストスコアに劣っている場合は戻る
-		if ((score_ + max_add_value_) * max_mul_value_ < best_score_)
+		if ((score_ + max_add_value_) * max_mul_value_ < g_best_score)
 			return;
 		// ネストを深くする
 		--available_side_count_[now_position];
@@ -892,11 +904,14 @@ class Solver {
 			if (score_ > best_score_) {
 				best_result_ = result_;
 				best_score_ = score_;
+				mtx.lock();
+				g_best_score = best_score_;
+				mtx.unlock();
 			}
 			return;
 		}
 		// 見込みスコアが現時点のベストスコアに劣っている場合は戻る
-		if ((score_ + max_add_value_) * max_mul_value_ < best_score_)
+		if ((score_ + max_add_value_) * max_mul_value_ < g_best_score)
 			return;
 		// ネストを深くする
 		--available_side_count_[now_position];
@@ -951,9 +966,9 @@ public:
 		for (const auto &problem_temp : problem_list) {
 			result_list_future.emplace_back(
 				pool.enqueue([&] {
-					Solver new_solver;
-					return new_solver.dfs(problem_temp, problem_temp.corner_goal_flg());
-				})
+				Solver new_solver;
+				return new_solver.dfs(problem_temp, problem_temp.corner_goal_flg());
+			})
 			);
 		}
 		vector<std::pair<Result, int>> result_list;
@@ -1019,12 +1034,14 @@ int main(int argc, char* argv[]) {
 		//
 		if (setting.solver_flg()) {
 			// 解を探索する
-			Solver solver;
-			StopWatch sw;
-			sw.Start();
-			std::pair<Result, int> result = solver.solve(problem, setting.split_count());
-			sw.Stop();
-			cout << problem.get_width() << "," << problem.get_height() << "," << result.second << "," << result.first << "," << (1.0 * sw.ElapsedMilliseconds() / 1000) << endl;
+			{
+				Solver solver;
+				StopWatch sw;
+				sw.Start();
+				std::pair<Result, int> result = solver.solve(problem, setting.split_count());
+				sw.Stop();
+				cout << problem.get_width() << "," << problem.get_height() << "," << result.second << "," << result.first << "," << (1.0 * sw.ElapsedMilliseconds() / 1000) << endl;
+			}
 			return 0;
 		}
 		else {
