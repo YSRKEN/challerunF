@@ -1060,7 +1060,9 @@ int main(int argc, char* argv[]) {
 			}
 			// 保存処理
 			for (size_t i = 0; i < splited_problem.size(); ++i) {
-				std::ofstream ofs(file_name_without_ext + "_" + std::to_string(i + 1) + ".txt");
+				int zero_count = std::to_string(splited_problem.size()).size() - std::to_string(i + 1).size();
+				const auto hoge = file_name_without_ext + "_" + string(zero_count, '0') + std::to_string(i + 1) + ".txt";
+				std::ofstream ofs(file_name_without_ext + "_" + string(zero_count, '0') + std::to_string(i + 1) + ".txt");
 				ofs << splited_problem[i].to_file();
 			}
 		}
