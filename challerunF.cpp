@@ -1021,6 +1021,8 @@ public:
 					break;
 				}
 			}
+			if(splited_problem2.size() == 0)
+				break;
 			splited_problem.clear();
 			splited_problem = splited_problem2;
 
