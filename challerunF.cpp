@@ -326,7 +326,7 @@ public:
 					for (size_t y = 0; y < height_; ++y) {
 						for (size_t x = 0; x < width_; ++x) {
 							size_t pos_src = y * width_ + x;
-							if (field_[pos_src].size() == 1 && pos_src != goal_) {
+							if (field_[pos_src].size() == 1 && pos_src != start_ && pos_src != goal_) {
 								size_t pos_dst = field_[pos_src][0].next_position;
 								erase_root(pos_src, pos_dst);
 								erease_flg = true;
@@ -1017,6 +1017,8 @@ public:
 					break;
 				}
 			}
+			if(splited_problem2.size() == 0)
+				break;
 			splited_problem.clear();
 			splited_problem = splited_problem2;
 
@@ -1060,7 +1062,9 @@ int main(int argc, char* argv[]) {
 			}
 			// 保存処理
 			for (size_t i = 0; i < splited_problem.size(); ++i) {
-				std::ofstream ofs(file_name_without_ext + "_" + std::to_string(i + 1) + ".txt");
+				int zero_count = std::to_string(splited_problem.size()).size() - std::to_string(i + 1).size();
+				const auto hoge = file_name_without_ext + "_" + string(zero_count, '0') + std::to_string(i + 1) + ".txt";
+				std::ofstream ofs(file_name_without_ext + "_" + string(zero_count, '0') + std::to_string(i + 1) + ".txt");
 				ofs << splited_problem[i].to_file();
 			}
 		}
