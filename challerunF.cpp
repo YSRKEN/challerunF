@@ -330,7 +330,7 @@ public:
 					for (size_t y = 0; y < height_; ++y) {
 						for (size_t x = 0; x < width_; ++x) {
 							size_t pos_src = y * width_ + x;
-							if (field_[pos_src].size() == 1 && pos_src != goal_) {
+							if (field_[pos_src].size() == 1 && pos_src != start_ && pos_src != goal_) {
 								size_t pos_dst = field_[pos_src][0].next_position;
 								erase_root(pos_src, pos_dst);
 								erease_flg = true;
