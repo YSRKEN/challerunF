@@ -145,7 +145,11 @@ struct Operation {
 		// M2*(M1*X+A1)+A2=M1*M2*X+A1*M2+A2 となる
 		const int mul_num2 = this->mul_num * b.mul_num;
 		const int add_num2 = this->add_num * b.mul_num + b.add_num;
-		return Operation{ mul_num2, add_num2, (add_num2 > 0 ? add_num2 : 0) };
+		Operation ope_x;
+		ope_x.mul_num = mul_num2;
+		ope_x.add_num = add_num2;
+		ope_x.add_num_x = (add_num2 > 0 ? add_num2 : 0);
+		return ope_x;
 	}
 };
 // 方向データ
