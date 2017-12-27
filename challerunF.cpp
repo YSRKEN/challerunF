@@ -22,17 +22,17 @@ class StopWatch {
 	std::chrono::system_clock::time_point end_time;
 public:
 	// ストップウォッチを開始
-	void Start() noexcept{ start_time = std::chrono::system_clock::now(); }
+	void Start() { start_time = std::chrono::system_clock::now(); }
 	// ストップウォッチを停止
-	void Stop() noexcept{ end_time = std::chrono::system_clock::now(); }
+	void Stop() { end_time = std::chrono::system_clock::now(); }
 	// 経過時間を返す
-	long long ElapsedNanoseconds() const noexcept {
+	long long ElapsedNanoseconds() const {
 		return std::chrono::duration_cast<std::chrono::nanoseconds>(end_time - start_time).count();
 	}
-	long long ElapsedMicroseconds() const noexcept {
+	long long ElapsedMicroseconds() const {
 		return std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
 	}
-	long long ElapsedMilliseconds() const noexcept {
+	long long ElapsedMilliseconds() const {
 		return std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
 	}
 };
@@ -85,13 +85,13 @@ public:
 		}
 	}
 	// getter
-	string file_name() const noexcept { return file_name_; }
-	int start_position() const noexcept { return start_position_; }
-	int goal_position() const noexcept { return goal_position_; }
-	bool solver_flg() const noexcept { return solver_flg_; }
-	unsigned int split_count() const noexcept { return split_count_; }
+	string file_name() const { return file_name_; }
+	int start_position() const { return start_position_; }
+	int goal_position() const { return goal_position_; }
+	bool solver_flg() const { return solver_flg_; }
+	unsigned int split_count() const { return split_count_; }
 	// 出力用
-	friend ostream& operator << (ostream& os, const Setting& setting) noexcept{
+	friend ostream& operator << (ostream& os, const Setting& setting) {
 		os << "【設定】" << endl;
 		os << "・ファイル名：" << setting.file_name_ << endl;
 		os << "・スタート地点：" << setting.start_position_ << endl;
@@ -117,7 +117,7 @@ struct Operation {
 	int add_num = 0;
 	int add_num_x = 0;	//add_numが1以上ならadd_num、0以下なら0とする
 	// 文字列化
-	string str() const noexcept {
+	string str() const {
 		if (add_num == 0) {
 			if (mul_num != 1) {
 				return "*" + std::to_string(mul_num);
@@ -134,7 +134,7 @@ struct Operation {
 		}
 	}
 	// 計算を適用
-	inline int calc(const int x) const noexcept {
+	inline int calc(const int x) const {
 		return x * mul_num + add_num;
 	}
 	// 2つのOperationを合体させる(非可換)
@@ -189,7 +189,7 @@ class Problem {
 	int pre_score_ = 1;
 	// 地点A→地点Bに移動する際のインデックスを取得する
 	// 取得できない場合は-1を返す
-	int get_index(const size_t point_a, const size_t point_b)const noexcept{
+	int get_index(const size_t point_a, const size_t point_b)const {
 		int result = -1;
 		for (size_t i = 0; i < field_[point_a].size(); ++i) {
 			if (field_[point_a][i].next_position == point_b) {
@@ -365,7 +365,7 @@ public:
 		}
 	}
 	// 辺の大きさを返す
-	size_t side_size() const noexcept {
+	size_t side_size() const {
 		return side_.size();
 	}
 	// 辺が使えるか否かを表すフラグ一覧(の初期値)を返す
@@ -394,11 +394,11 @@ public:
 		return available_side_count;
 	}
 	// 角にゴールがあるか？
-	bool corner_goal_flg() const noexcept {
+	bool corner_goal_flg() const {
 		return (goal_ == 0 || goal_ == width_ - 1 || goal_ == width_ * (height_ - 1) || goal_ == width_ * height_ - 1);
 	}
 	// 問題の奇偶を調べる
-	bool is_odd() const noexcept {
+	bool is_odd() const {
 		int sx = start_ % width_, sy = start_ / width_;
 		int gx = goal_ % width_, gy = goal_ / width_;
 		int x_flg = std::abs(sx - gx) % 2, y_flg = std::abs(sy - gy) % 2;
@@ -431,7 +431,7 @@ public:
 		return oss.str();
 	}
 	// 獲得可能な得点の上限を算出するための数値
-	void get_muladd_value(const vector<char> &side_flg, int &max_mul_value, int &max_add_value) const noexcept {
+	void get_muladd_value(const vector<char> &side_flg, int &max_mul_value, int &max_add_value) const {
 		// 初期値
 		max_mul_value = 1; max_add_value = 0;
 		// 各辺についてチェックする
@@ -449,31 +449,31 @@ public:
 		}
 	}
 	// getter
-	size_t get_start() const noexcept {
+	size_t get_start() const {
 		return start_;
 	}
-	size_t get_goal() const noexcept {
+	size_t get_goal() const {
 		return goal_;
 	}
-	size_t get_width() const noexcept {
+	size_t get_width() const {
 		return width_;
 	}
-	size_t get_height() const noexcept {
+	size_t get_height() const {
 		return height_;
 	}
-	auto &get_pre_root() const noexcept {
+	const vector<size_t> &get_pre_root() const {
 		return pre_root_;
 	}
-	const vector<Direction>& get_dir_list(const size_t point) const noexcept {
+	const vector<Direction>& get_dir_list(const size_t point) const {
 		return field_[point];
 	}
-	const vector<Direction2>& get_dir_list2(const size_t point) const noexcept {
+	const vector<Direction2>& get_dir_list2(const size_t point) const {
 		return field2_[point];
 	}
-	const Operation& get_operation(const size_t side_index) const noexcept {
+	const Operation& get_operation(const size_t side_index) const {
 		return side_[side_index];
 	}
-	int get_pre_score() const noexcept {
+	int get_pre_score() const {
 		return pre_score_;
 	}
 	// 出力用(等幅フォント用)
@@ -672,19 +672,19 @@ public:
 		root_[ptr_] = start;
 	}
 	// 辺を移動した際の操作
-	void move_side(const size_t point) noexcept {
+	void move_side(const size_t point) {
 		++ptr_;
 		root_[ptr_] = point;
 	}
 	// 辺を戻した際の操作
-	void back_side() noexcept {
+	void back_side() {
 		--ptr_;
 	}
-	void back_side2() noexcept {
+	void back_side2() {
 		ptr_ -= 2;
 	}
 	// 現在の位置
-	size_t now_position() const noexcept {
+	size_t now_position() const {
 		return root_[ptr_];
 	}
 	// getter
@@ -757,7 +757,7 @@ class Solver {
 		}
 		return std::pair<Result, int>(best_result2, best_score_);
 	}
-	void dfs_cg_a(const size_t now_position) noexcept {
+	void dfs_cg_a(const size_t now_position) {
 		// ゴール地点なら、とりあえずスコア判定を行う
 		if (now_position == problem_.get_goal()) {
 			if (score_ > best_score_) {
@@ -807,7 +807,7 @@ class Solver {
 		}
 		++available_side_count_[now_position];
 	}
-	void dfs_cg_b(const size_t now_position) noexcept {
+	void dfs_cg_b(const size_t now_position) {
 		// ゴール地点なら、とりあえずスコア判定を行う
 		if (now_position == problem_.get_goal()) {
 			if (score_ > best_score_) {
@@ -849,7 +849,7 @@ class Solver {
 		}
 		++available_side_count_[now_position];
 	}
-	void dfs_a(const size_t now_position) noexcept {
+	void dfs_a(const size_t now_position) {
 		// ゴール地点なら、とりあえずスコア判定を行う
 		if (now_position == problem_.get_goal()) {
 			if (score_ > best_score_) {
@@ -898,7 +898,7 @@ class Solver {
 		}
 		++available_side_count_[now_position];
 	}
-	void dfs_b(const size_t now_position) noexcept {
+	void dfs_b(const size_t now_position) {
 		// ゴール地点なら、とりあえずスコア判定を行う
 		if (now_position == problem_.get_goal()) {
 			if (score_ > best_score_) {
