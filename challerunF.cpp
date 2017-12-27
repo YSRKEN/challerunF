@@ -710,7 +710,7 @@ public:
 size_t g_threads = 1;
 size_t g_max_threads;
 std::mutex mtx;
-int g_best_score = -9999;
+int g_best_score = 4091;
 class Solver {
 	Problem problem_;
 	Result result_, best_result_;
@@ -767,9 +767,6 @@ class Solver {
 			if (score_ > best_score_) {
 				best_result_ = result_;
 				best_score_ = score_;
-				mtx.lock();
-				g_best_score = best_score_;
-				mtx.unlock();
 				//cout << best_result_.get_score() << "," << best_result_ << endl;
 			}
 			return;
@@ -817,9 +814,6 @@ class Solver {
 			if (score_ > best_score_) {
 				best_result_ = result_;
 				best_score_ = score_;
-				mtx.lock();
-				g_best_score = best_score_;
-				mtx.unlock();
 			}
 			return;
 		}
@@ -859,9 +853,6 @@ class Solver {
 			if (score_ > best_score_) {
 				best_result_ = result_;
 				best_score_ = score_;
-				mtx.lock();
-				g_best_score = best_score_;
-				mtx.unlock();
 				//cout << best_result_.get_score() << "," << best_result_ << endl;
 			}
 		}
@@ -908,9 +899,6 @@ class Solver {
 			if (score_ > best_score_) {
 				best_result_ = result_;
 				best_score_ = score_;
-				mtx.lock();
-				g_best_score = best_score_;
-				mtx.unlock();
 			}
 			return;
 		}
